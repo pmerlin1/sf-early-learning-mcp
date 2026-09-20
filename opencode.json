@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp",
+        "--headless"
+      ],
+      "enabled": true,
+      "environment": {
+        "BROWSER": "chromium",
+        "LD_LIBRARY_PATH": "/home/pmerlin/.local/lib/asound/usr/lib/x86_64-linux-gnu"
+      }
+    },
+    "sf-early-learning": {
+      "type": "local",
+      "command": [
+        "node",
+        "/mnt/c/Users/Paul Merlin/code/preschool/src/index.js"
+      ],
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,17 @@
+https://app.mycareconnect.io/carewait3/sfdec/service/family-application/pre-check-sfdec
+
+"Congratulations! We found a program for you.
+
+Based on the information you provided, you may be eligible for:
+Early Learning For All (ELFA)
+Half Tuition Credit
+
+Eligibility for the ELFA Half Tuition Credit means you are eligible to receive a discount on your tuition at any one of over 500 high-quality Early Learning For All programs as follows:
+
+    Infants: $1,514 per month
+    Toddlers: $1,153 per month
+    Preschoolers: $1,058 per month"
+
+Use playwright MCP to view this: https://app.mycareconnect.io/carewait3/sfdec/service/search/list?near=San%20Francisco,%20CA. THere are so many reuslts, it's confusing.
+
+Can you find something for a 2.1 year old that is around ~ $1200/month? Are there part time programs - this way we don't need to pay out of pocket. I understand the full programs are typically around 2300 a month, which means out of pocket costs of ~1200. I can't afford that right now, so need to find something that would be entirely covered. We would prefer a language immersion school. Can you please find options? Ideally we want a real preschool and not some setup in someone's house. that doesn't feel as safe.

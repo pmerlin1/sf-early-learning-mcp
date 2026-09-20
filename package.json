@@ -1,0 +1,32 @@
+{
+  "name": "sf-early-learning-mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server for San Francisco Early Learning For All (ELFA) preschool search, eligibility, and TypeSafe Jev System One evaluation",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "sf-early-learning-mcp": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/test-server.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "san-francisco",
+    "early-learning-for-all",
+    "elfa",
+    "preschool",
+    "childcare",
+    "carewait",
+    "typesafe",
+    "jev"
+  ],
+  "author": "Paul Merlin",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@typesafe-ai/sdk": "^0.6.0"
+  }
+}
