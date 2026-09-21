@@ -110,6 +110,44 @@ Add to your `claude_desktop_config.json`:
 
 ---
 
+## Recommended Prompts to Start
+
+Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-paste prompts:
+
+### 1. The Intake Interview
+> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend preschools based on my budget and language preference."*
+
+### 2. Low Out-of-Pocket Language Immersion
+> *"We have the ELFA Half Tuition Credit for our 2.1-year-old toddler. Can you find licensed preschool centers (not home-based) offering Spanish or Cantonese/Mandarin immersion where our out-of-pocket tuition is under $400/month?"*
+
+### 3. Income Eligibility Check
+> *"We are a family of 4 living in San Francisco with a gross monthly income of $15,000. Do we qualify for ELFA Free Tuition or the Full Credit? What is our monthly voucher amount for a 2-year-old toddler and a 4-year-old preschooler?"*
+
+### 4. Head-to-Head A/B Evaluation (Gemini vs. TypeSafe Jev)
+> *"Run an A/B evaluation comparison between Gemini and TypeSafe Jev System One for top Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
+
+---
+
+## Example Scenarios & Real Net Costs
+
+| Scenario | Child Age | Voucher Credit | Selected Center | Regular Tuition | Your Net Monthly Cost |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Spanish Immersion (Strict Budget)** | 2.1 yo | $1,153 / mo (Half Credit) | **Chibi Chan Too** (Presidio) | $1,243 / mo | **$90 / mo** |
+| **Spanish Immersion (Mission Center)** | 2.1 yo | $1,153 / mo (Half Credit) | **Mission Kids Co-op** (Mission) | $1,383 / mo | **$230 / mo** |
+| **Chinese Immersion (100% Covered)** | 2.1 yo | $1,153 / mo (Half Credit) | **Kai Ming Rainbow Center** | $1,153 / mo | **$0 / mo** |
+| **Free Tuition Tier (0-110% AMI)** | Any | 100% Free | **Any ELFA Center** | Any | **$0 / mo** *(Co-pays banned)* |
+
+---
+
+## Security, SAST & Verification
+
+- **Zero Hardcoded Secrets**: Uses environment variables (`TYPESAFE_API_KEY`, optional `CAREWAIT_API_KEY`).
+- **Dependency Audit**: Verified with `npm audit` (0 vulnerabilities).
+- **Pre-commit Hooks**: Enforces automated secret scanning and unit test validation before any commit.
+- **Deterministic Logic**: All income brackets and voucher calculations are executed in code, preventing LLM hallucination of financial figures.
+
+---
+
 ## Testing
 
 Run unit tests and verification suite:

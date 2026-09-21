@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/test-server.js"
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "mcp",

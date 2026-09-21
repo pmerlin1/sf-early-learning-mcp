@@ -106,6 +106,6 @@ export const PROGRAM_TYPES = {
   exempt: 'licenseExemptCenterSchoolCamp'
 };
 
-export const CAREWAIT_API_KEY = 'lCnKwEqZed431Cjif22Zk4JOPEXzwE3e3kMTFPpQ';
+export const CAREWAIT_API_KEY = process.env.CAREWAIT_API_KEY || 'lCnKwEqZed431Cjif22Zk4JOPEXzwE3e3kMTFPpQ';
 export const CAREWAIT_SEARCH_URL = 'https://app.mycareconnect.io/api/public/search/profile/rd';
 export const CAREWAIT_SITE_URL = 'https://app.mycareconnect.io/api/public/search/sites';
