@@ -53,6 +53,28 @@ Runs an A/B evaluation benchmark: feeds candidate options and family constraints
 ### 6. `get_elfa_rates_and_rules`
 Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings, and regulatory guidelines.
 
+### 7. `get_state_licensing_record`
+Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number.
+
+---
+
+## TypeSafe Jev System One Meta Composite Scoring
+
+Rather than relying on free-form LLM guesswork, candidate centers are evaluated through a structured, multi-dimensional decision model:
+
+1. **Hard Requirements (Deterministic Gates)**:
+   - Legally licensed status (`STATUS === 'Licensed'`).
+   - Facility type matching (dedicated commercial center vs in-home).
+   - Age bracket compatibility (must legally accommodate child's age in months).
+
+2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
+   - **State Safety & Licensing Record (35%)**: Evaluated against CCLD Type A citations, Type B deficiencies, and substantiated complaints. A single minor resolved technical finding receives a slight ding rather than an outright disqualification, while centers with serious safety hazards are heavily penalized.
+   - **Net Budget Satisfaction (30%)**: Evaluates net out-of-pocket tuition against the family's strict budget ceiling.
+   - **Language Immersion Depth (25%)**: Scores authentic immersion vs bilingual support vs secondary exposure.
+   - **Toddler Development & Diapering (10%)**: Confirms Title 22 Toddler diaper changing facilities and supportive toilet learning (eliminating programs that demand unrealistic potty training for a 2-year-old).
+
+3. **Composite Verdict**: Produces a calibrated recommendation choice (`top_tier`, `strong_alternative`, `caution_flagged`, `unsuitable`) with continuous confidence scoring.
+
 ---
 
 ## Installation & Setup

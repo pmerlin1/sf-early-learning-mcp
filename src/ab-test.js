@@ -77,10 +77,13 @@ export async function runABComparison({
       geminiEval: evalData, // alias for backwards compatibility
       jevSystemOneEval: {
         decision: j ? j.recommendationChoice : null,
-        compositeConfidenceScore: j ? (j.compositeScore || j.confidence) : null,
-        budgetFitLevel: j?.budgetFit?.level || j?.budgetFitScore || null,
-        immersionLevel: j?.immersionFit?.level || j?.immersionFitScore || null,
-        dedicatedCenterProbability: j?.facilitySafety?.isDedicatedCenterProb ?? 0.99
+        compositeScore: j ? j.compositeScore : null,
+        safetyRating: j ? j.safetyRating : null,
+        safetyComplianceScore: j ? j.safetyScore : null,
+        budgetFitScore: j ? j.budgetFitScore : null,
+        immersionScore: j ? j.immersionFitScore : null,
+        toddlerDiaperingScore: j ? j.toddlerDiaperingScore : null,
+        ccldInspectionSummary: j?.ccldSummary || c.ccldInspection?.safetySummary || 'Licensed'
       },
       agreement: (l?.rating?.startsWith('A') && (j?.recommendationChoice === 'top_tier' || j?.recommendationChoice === 'strong_alternative'))
     };

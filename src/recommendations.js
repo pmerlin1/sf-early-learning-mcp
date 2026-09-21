@@ -136,7 +136,10 @@ export async function getRecommendations(params = {}) {
         estimatedNetOutOfPocketMonthly: netMonthly,
         rateNotes: site.rateNotes,
         schedule: site.schedule,
-        description: site.description
+        description: site.description,
+        licenseNumber: site.licenseNumber,
+        ccldInspection: site.ccldInspection,
+        diaperingAccommodated: site.diaperingAccommodated
       });
     } catch (e) {
       // skip on error

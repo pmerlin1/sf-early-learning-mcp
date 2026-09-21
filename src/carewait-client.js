@@ -7,6 +7,7 @@ import {
   PROGRAM_TYPES,
   FINANCIAL_ASSISTANCE_MAP
 } from './constants.js';
+import { getFacilityDetail } from './ccld-client.js';
 
 const ALL_SF_ZIPS = [
   94016, 94101, 94106, 94112, 94119, 94121, 94131, 94133, 94135, 94138, 94141, 94143, 94156, 94163, 94175, 94199,
@@ -202,6 +203,14 @@ export async function getSiteDetails(entityId) {
     schedule: prof.schedule || [],
     hours: prof.hours || [],
     accommodations: prof.accommodations || [],
-    activities: prof.activities || []
+    activities: prof.activities || [],
+    licenseNumber: (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers) || null,
+    ccldInspection: await (async () => {
+      const lic = (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers);
+      return lic ? await getFacilityDetail(lic) : null;
+    })(),
+    diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided') ||
+      (prof.accommodations || []).includes('pottyTrainingProvided') ||
+      (prof.program || []).some(p => Number(p.minAge) < 36)
   };
 }

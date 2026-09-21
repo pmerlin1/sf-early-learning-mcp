@@ -14,6 +14,7 @@ import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
 import { runABComparison } from './ab-test.js';
+import { getFacilityDetail } from './ccld-client.js';
 import {
   ELFA_RATES_FY26_27,
   ELFA_INCOME_TABLE_FY26_27,
@@ -226,6 +227,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           }
         }
+      },
+      {
+        name: 'get_state_licensing_record',
+        description:
+          'Retrieve official California Community Care Licensing Division (CCLD) state inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and official comments for a child care facility by license number.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            licenseNumber: {
+              type: 'string',
+              description: 'The California child care facility license number (e.g. "384001291")'
+            }
+          },
+          required: ['licenseNumber']
+        }
       }
     ]
   };
@@ -335,6 +351,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'compare_llm_vs_jev':
       case 'compare_gemini_vs_jev': {
         const result = await runABComparison(args || {});
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+        };
+      }
+
+      case 'get_state_licensing_record': {
+        const result = await getFacilityDetail(args?.licenseNumber);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
         };
