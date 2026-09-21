@@ -166,6 +166,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: 'Preferred language immersion (e.g. "Spanish", "Mandarin", "Cantonese", "French")'
             },
+            homeZipCode: {
+              type: 'number',
+              description: 'Family home zip code (e.g. 94121) to prioritize immediate neighborhood facilities and calculate exact commute distance'
+            },
             programType: {
               type: 'string',
               enum: ['licensedCenter', 'licensedFamilyChildCare'],
@@ -220,6 +224,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             preferredLanguage: {
               type: 'string',
               description: 'Preferred language immersion (e.g. Spanish, Mandarin, French)'
+            },
+            homeZipCode: {
+              type: 'number',
+              description: 'Family home zip code (e.g. 94121) to calculate distance and score location convenience'
             },
             candidateCount: {
               type: 'number',

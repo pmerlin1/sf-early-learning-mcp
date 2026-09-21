@@ -1,6 +1,7 @@
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { calculateEligibility } from './eligibility.js';
 import { ELFA_RATES_FY26_27 } from './constants.js';
+import { evaluateProximity } from './geo-utils.js';
 
 export async function getRecommendations(params = {}) {
   const {
@@ -11,6 +12,8 @@ export async function getRecommendations(params = {}) {
     benefitTier, // e.g. 'halfCreditELFA', 'freeTuitionELFA', 'fullCreditELFA'
     targetBudgetMonthly = 1200,
     preferredLanguage, // e.g. 'Spanish', 'Mandarin', 'Cantonese', 'French'
+    homeZipCode, // e.g. 94121 or neighborhood
+    homeLocation, // e.g. '94121' or 'Outer Richmond'
     programType = 'licensedCenter',
     schedule, // 'partTime', 'fullTime', or undefined
     maxResults = 10
@@ -121,11 +124,15 @@ export async function getRecommendations(params = {}) {
         netMonthly = Math.max(0, grossTuition - subsidyAmount);
       }
 
+      const userLocation = homeZipCode || homeLocation;
+      const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
+
       detailedCandidates.push({
         entityId: site.entityId,
         name: site.name,
         address: site.address,
         zipCode: site.zipCode,
+        location: site.location,
         phone: site.phone,
         email: site.email,
         programType: site.programType,
@@ -139,7 +146,11 @@ export async function getRecommendations(params = {}) {
         description: site.description,
         licenseNumber: site.licenseNumber,
         ccldInspection: site.ccldInspection,
-        diaperingAccommodated: site.diaperingAccommodated
+        diaperingAccommodated: site.diaperingAccommodated,
+        distanceMiles: proximity.distanceMiles,
+        proximityRating: proximity.proximityRating,
+        proximityLevel: proximity.proximityLevel,
+        isImmediateNeighborhood: proximity.isImmediateNeighborhood
       });
     } catch (e) {
       // skip on error
@@ -147,10 +158,29 @@ export async function getRecommendations(params = {}) {
   }
 
   // 4. Sort candidates:
-  // Prioritize candidates where net out-of-pocket is within budget, then lowest out-of-pocket
+  // If location is provided, heavily factor proximity into sorting while staying within budget
+  const userLoc = homeZipCode || homeLocation;
   detailedCandidates.sort((a, b) => {
     const costA = a.estimatedNetOutOfPocketMonthly !== null ? a.estimatedNetOutOfPocketMonthly : 99999;
     const costB = b.estimatedNetOutOfPocketMonthly !== null ? b.estimatedNetOutOfPocketMonthly : 99999;
+
+    if (userLoc) {
+      // Both within budget: prioritize proximity
+      const aInBudget = costA <= targetBudgetMonthly;
+      const bInBudget = costB <= targetBudgetMonthly;
+      if (aInBudget && bInBudget) {
+        const distA = a.distanceMiles !== null ? a.distanceMiles : 99;
+        const distB = b.distanceMiles !== null ? b.distanceMiles : 99;
+        // If distance difference is significant (> 1.5 miles), prefer closer center
+        if (Math.abs(distA - distB) > 1.5) {
+          return distA - distB;
+        }
+        return costA - costB;
+      }
+      if (aInBudget) return -1;
+      if (bInBudget) return 1;
+    }
+
     return costA - costB;
   });
 
@@ -160,6 +190,7 @@ export async function getRecommendations(params = {}) {
     subsidyBenefitTier: activeTier,
     monthlySubsidyDiscount: subsidyAmount,
     targetBudgetMonthly,
+    homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
     totalFound: detailedCandidates.length,
     recommendations: detailedCandidates.slice(0, maxResults)

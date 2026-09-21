@@ -172,6 +172,10 @@ export async function getSiteDetails(entityId) {
     programType: prof.programType,
     address: prof.address ? prof.address.formattedAddress : '',
     zipCode: prof.address ? prof.address.zip : '',
+    location: {
+      lat: prof.address?.latitude ? Number(prof.address.latitude) : (prof.address?.location?.coordinates ? Number(prof.address.location.coordinates[1]) : null),
+      lon: prof.address?.longitude ? Number(prof.address.longitude) : (prof.address?.location?.coordinates ? Number(prof.address.location.coordinates[0]) : null)
+    },
     phone: prof.phoneNumber || '',
     email: prof.email || '',
     description: prof.programDescription || '',

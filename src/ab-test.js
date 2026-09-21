@@ -7,8 +7,12 @@ export async function runABComparison({
   benefitTier = 'halfCreditELFA',
   targetBudgetMonthly = 1200,
   preferredLanguage = 'Spanish',
+  homeZipCode,
+  homeLocation,
   candidateCount = 5
 }) {
+  const userLoc = homeZipCode || homeLocation;
+
   // 1. Retrieve candidates
   const recData = await getRecommendations({
     childAgeYears,
@@ -16,6 +20,7 @@ export async function runABComparison({
     benefitTier,
     targetBudgetMonthly,
     preferredLanguage,
+    homeZipCode: userLoc,
     maxResults: candidateCount
   });
 
@@ -25,7 +30,8 @@ export async function runABComparison({
   const jevJudgments = await evaluateCandidatesWithJev(candidates, {
     targetBudgetMonthly,
     preferredLanguage,
-    childAgeYears
+    childAgeYears,
+    homeZipCode: userLoc
   });
 
   // 3. Model A: Generative LLM Structured Heuristic Ranking
@@ -72,12 +78,18 @@ export async function runABComparison({
       netMonthlyCost: c.estimatedNetOutOfPocketMonthly,
       languages: c.languages,
       address: c.address,
+      zipCode: c.zipCode,
       phone: c.phone,
+      distanceMiles: c.distanceMiles,
+      proximityRating: c.proximityRating,
       llmEval: evalData,
       geminiEval: evalData, // alias for backwards compatibility
       jevSystemOneEval: {
         decision: j ? j.recommendationChoice : null,
         compositeScore: j ? j.compositeScore : null,
+        locationConvenienceScore: j ? j.locationConvenienceScore : null,
+        distanceMiles: j?.distanceMiles || c.distanceMiles,
+        proximityRating: j?.proximityRating || c.proximityRating,
         safetyRating: j ? j.safetyRating : null,
         safetyComplianceScore: j ? j.safetyScore : null,
         budgetFitScore: j ? j.budgetFitScore : null,
@@ -94,6 +106,7 @@ export async function runABComparison({
       childAgeYears,
       targetBudgetMonthly,
       preferredLanguage,
+      homeLocation: userLoc || 'All SF',
       subsidyBenefitTier: benefitTier,
       monthlyCredit: recData.monthlySubsidyDiscount
     },

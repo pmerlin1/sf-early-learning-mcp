@@ -1,19 +1,25 @@
 import { TypeSafeClient, score, choice, noul } from '@typesafe-ai/sdk';
+import { evaluateProximity } from './geo-utils.js';
 
 /**
  * Evaluates and scores preschool candidates using TypeSafe Jev System One model.
- * Produces a meta composite score across safety licensing, budget, language immersion,
- * and toddler development / diapering needs.
+ * Produces a nuanced meta composite score across location proximity, safety licensing,
+ * budget, language immersion, and toddler development / diapering needs.
  */
-export async function evaluateCandidatesWithJev(candidates, userPreferences) {
+export async function evaluateCandidatesWithJev(candidates, userPreferences = {}) {
   const apiKey = process.env.TYPESAFE_API_KEY;
   const isLive = Boolean(apiKey);
 
   const {
     targetBudgetMonthly = 1200,
     preferredLanguage = 'Spanish',
-    childAgeYears = 2.1
+    childAgeYears = 2.1,
+    homeZipCode,
+    homeLocation
   } = userPreferences;
+
+  const userLoc = homeZipCode || homeLocation;
+  const hasUserLoc = Boolean(userLoc);
 
   const results = [];
 
@@ -24,23 +30,38 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
     const complaintVisits = ccld.complaintVisits || 0;
     const substantiated = ccld.substantiatedAllegations || 0;
 
+    // Evaluate proximity if not already computed
+    const proximity = candidate.proximityLevel != null
+      ? {
+          distanceMiles: candidate.distanceMiles,
+          proximityLevel: candidate.proximityLevel,
+          proximityRating: candidate.proximityRating,
+          isImmediateNeighborhood: candidate.isImmediateNeighborhood
+        }
+      : evaluateProximity(candidate.zipCode, candidate.location, userLoc);
+
     const state = {
       familyProfile: {
         childAgeYears,
         targetBudgetMonthly,
         preferredLanguage,
+        homeLocation: userLoc || 'San Francisco',
         wantsLicensedCenter: true,
         pottyTrained: childAgeYears >= 3.0 // 2.1-year-olds need diapering accommodation
       },
       candidate: {
         name: candidate.name,
         languages: candidate.languages,
+        address: candidate.address,
+        zipCode: candidate.zipCode,
         grossMonthlyTuition: candidate.grossMonthlyTuition,
         monthlySubsidyCredit: candidate.monthlySubsidyCredit,
         netMonthlyCost: candidate.estimatedNetOutOfPocketMonthly,
         programType: candidate.programType,
         schedule: candidate.schedule,
         licenseNumber: candidate.licenseNumber,
+        distanceFromHomeMiles: proximity.distanceMiles,
+        proximityRating: proximity.proximityRating,
         diaperingAccommodated: candidate.diaperingAccommodated !== false,
         ccldInspection: {
           status: ccld.status || 'Licensed',
@@ -60,6 +81,12 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
         const response = await client.systemOne({
           state,
           questions: {
+            locationConvenience: score('Rate how convenient and commutable this preschool location is for the family in San Francisco', [
+              'Long cross-town commute (> 4.5 miles) with heavy traffic congestion (e.g. Richmond to Bayview/Vis Valley)',
+              'Moderate cross-town commute (2.5 to 4.5 miles, e.g. Richmond to Mission or SOMA)',
+              'Convenient adjacent neighborhood (1.2 to 2.5 miles, e.g. Richmond to Presidio Heights or Sunset)',
+              'Immediate neighborhood or walking distance (< 1.2 miles or same zip code)'
+            ]),
             safetyScore: score('Rate the state licensing inspection safety record of this facility', [
               'Critical concern: Type A citations, active license restriction, or multiple substantiated complaint allegations',
               'Notable caution: Multiple Type B citations or substantiated complaints on file requiring parental review',
@@ -85,31 +112,46 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
               'Optimal: Dedicated toddler license with diaper changing tables and supportive toilet learning'
             ]),
             recommendation: choice('What is the meta composite recommendation verdict for this family?', {
-              top_tier: 'Exceptional match across safety, budget, language immersion, and toddler care',
-              strong_alternative: 'Very good option with minor compromises (e.g. 1 minor resolved recordkeeping finding, or slight out-of-pocket)',
+              top_tier: 'Exceptional match across location proximity, safety, budget, language immersion, and toddler care',
+              strong_alternative: 'Very good option with minor compromises (e.g. adjacent neighborhood or 1 minor resolved technical finding)',
               caution_flagged: 'Notable state citations, substantiated allegations, or budget stretch requiring parental caution',
               unsuitable: 'Critical health/safety hazard, exceeds budget ceiling, or unsuited for child age'
             })
           }
         });
 
+        const lScore = Number(response.answers.locationConvenience.score);
         const sScore = Number(response.answers.safetyScore.score);
         const bScore = Number(response.answers.budgetFit.score);
         const iScore = Number(response.answers.immersionFit.score);
         const tScore = Number(response.answers.toddlerDiaperingFit.score);
 
         // Normalized 0 to 1
+        const lNorm = lScore / 3;
         const sNorm = sScore / 3;
         const bNorm = bScore / 3;
         const iNorm = iScore / 3;
         const tNorm = tScore / 3;
 
-        // Composite weighted score: Safety (35%), Budget (30%), Immersion (25%), Toddler Care (10%)
-        const composite = (sNorm * 0.35) + (bNorm * 0.30) + (iNorm * 0.25) + (tNorm * 0.10);
+        // Composite weighted score:
+        // Location Proximity: 25% (if user specified location)
+        // Safety: 25%
+        // Budget: 25%
+        // Immersion: 15%
+        // Toddler Diapering: 10%
+        let composite = 0;
+        if (hasUserLoc) {
+          composite = (lNorm * 0.25) + (sNorm * 0.25) + (bNorm * 0.25) + (iNorm * 0.15) + (tNorm * 0.10);
+        } else {
+          composite = (sNorm * 0.35) + (bNorm * 0.30) + (iNorm * 0.25) + (tNorm * 0.10);
+        }
 
         results.push({
           candidateName: candidate.name,
           source: 'jev_live_api',
+          locationConvenienceScore: lScore,
+          proximityRating: proximity.proximityRating,
+          distanceMiles: proximity.distanceMiles,
           safetyScore: sScore,
           safetyRating: sScore >= 2.5 ? 'Pristine' : (sScore >= 1.5 ? 'Minor resolved findings' : 'Caution flagged'),
           budgetFitScore: bScore,
@@ -135,7 +177,10 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
     const hasLang = langs.some(l => l.includes(targetLang)) ||
       (candidate.description || '').toLowerCase().includes(targetLang);
 
-    // 1. Safety scoring (0 to 3)
+    // 1. Location proximity score (0 to 3)
+    const lScore = proximity.proximityLevel;
+
+    // 2. Safety scoring (0 to 3)
     let sScore = 3.0;
     let sRating = 'Pristine';
     if (totalTypeA > 0 || substantiated > 0) {
@@ -149,7 +194,7 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
       sRating = 'Minor resolved findings';
     }
 
-    // 2. Budget scoring (0 to 3)
+    // 3. Budget scoring (0 to 3)
     let bScore = 0.0;
     if (netCost <= 100) {
       bScore = 3.0;
@@ -161,17 +206,22 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
       bScore = 1.2;
     }
 
-    // 3. Immersion scoring (0 to 3)
+    // 4. Immersion scoring (0 to 3)
     let iScore = hasLang ? 2.8 : 0.2;
 
-    // 4. Toddler diapering (0 to 3)
+    // 5. Toddler diapering (0 to 3)
     let tScore = candidate.diaperingAccommodated !== false ? 3.0 : 0.5;
 
     // Composite weighted score (0 to 1)
-    const composite = ((sScore / 3) * 0.35) + ((bScore / 3) * 0.30) + ((iScore / 3) * 0.25) + ((tScore / 3) * 0.10);
+    let composite = 0;
+    if (hasUserLoc) {
+      composite = ((lScore / 3) * 0.25) + ((sScore / 3) * 0.25) + ((bScore / 3) * 0.25) + ((iScore / 3) * 0.15) + ((tScore / 3) * 0.10);
+    } else {
+      composite = ((sScore / 3) * 0.35) + ((bScore / 3) * 0.30) + ((iScore / 3) * 0.25) + ((tScore / 3) * 0.10);
+    }
 
     let recommendation = 'unsuitable';
-    if (sScore >= 2.0 && bScore >= 2.0 && iScore >= 2.0) {
+    if (sScore >= 2.0 && bScore >= 2.0 && iScore >= 2.0 && (!hasUserLoc || lScore >= 1.5)) {
       recommendation = 'top_tier';
     } else if (sScore >= 1.5 && bScore >= 1.0 && iScore >= 1.5) {
       recommendation = 'strong_alternative';
@@ -182,6 +232,9 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
     results.push({
       candidateName: candidate.name,
       source: 'jev_system_one_simulated',
+      locationConvenienceScore: lScore,
+      proximityRating: proximity.proximityRating,
+      distanceMiles: proximity.distanceMiles,
       safetyScore: sScore,
       safetyRating: sRating,
       budgetFitScore: bScore,
