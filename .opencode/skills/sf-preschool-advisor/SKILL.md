@@ -11,7 +11,7 @@ This skill provides authoritative guidance on San Francisco preschool admissions
 
 ## 1. Hard Rules & Eligibility Architecture
 
-Never estimate or guess income eligibility or subsidy rates in unstructured conversation. Always use the `sf-early-learning` MCP tools (`check_elfa_eligibility`, `get_smart_recommendations`, `search_sf_childcare`, `get_childcare_details`, and `compare_gemini_vs_jev`).
+Never estimate or guess income eligibility or subsidy rates in unstructured conversation. Always use the `sf-early-learning` MCP tools (`check_elfa_eligibility`, `get_smart_recommendations`, `search_sf_childcare`, `get_childcare_details`, and `compare_llm_vs_jev`).
 
 ### Age Group Definitions (Strict)
 * **Infants**: 0 to 24 months
@@ -59,4 +59,4 @@ When helping a family, follow this structured intake:
 
 To ensure zero hallucination of budget compliance or program fit:
 * Use `get_smart_recommendations` for deterministic net-cost calculation (`Math.max(0, grossTuition - subsidy)`).
-* Use `compare_gemini_vs_jev` to run side-by-side human evaluations between generative narrative reasoning and TypeSafe Jev System One probability distributions (`score`, `choice`, `noul`).
+* Use `compare_llm_vs_jev` to run side-by-side human evaluations between generative narrative reasoning and TypeSafe Jev System One probability distributions (`score`, `choice`, `noul`).

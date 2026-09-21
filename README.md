@@ -2,7 +2,7 @@
 
 An authoritative [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for navigating San Francisco's **Department of Early Childhood (DEC)** preschool network, **Early Learning For All (ELFA)** financial subsidies, and real-time **CareWait** database searches.
 
-Includes a **TypeSafe Jev System One** decision engine and **A/B evaluation matrix** comparing deterministic probability scoring against generative LLM judgments (Gemini).
+Includes a **TypeSafe Jev System One** decision engine and **A/B evaluation matrix** comparing deterministic probability scoring against generative LLM judgments (Claude, GPT, Gemini, etc.).
 
 ---
 
@@ -12,7 +12,7 @@ Includes a **TypeSafe Jev System One** decision engine and **A/B evaluation matr
 - **Authoritative FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits.
 - **Automated Net Out-of-Pocket Calculation**: Automatically calculates family subsidy discounts and estimates true monthly net tuition (`Math.max(0, grossTuition - subsidy)`).
 - **TypeSafe Jev System One Integration**: Leverages TypeSafe's Jev model (`@typesafe-ai/sdk`) for typed decision primitives (`score`, `choice`, `noul`) to rank options with calibrated confidence rather than hallucinated generative text.
-- **A/B Human Evaluation Tool**: Side-by-side comparison matrix of Gemini narrative recommendations vs Jev System One probability distributions.
+- **A/B Human Evaluation Tool**: Side-by-side comparison matrix of Generative LLM narrative recommendations vs Jev System One probability distributions.
 
 ---
 
@@ -47,8 +47,8 @@ Fetches complete provider details by `entityId`: licensed classrooms, age limits
 ### 4. `get_smart_recommendations`
 All-in-one recommendation engine: takes budget, language, schedule, and benefit tier, computes net out-of-pocket costs, and returns an affordably ranked shortlist of preschool centers.
 
-### 5. `compare_gemini_vs_jev`
-Runs an A/B evaluation benchmark: feeds candidate options and family constraints to both Gemini (narrative reasoning) and TypeSafe Jev System One (probabilistic decision model) to produce a structured human-evaluation comparison matrix.
+### 5. `compare_llm_vs_jev` (alias: `compare_gemini_vs_jev`)
+Runs an A/B evaluation benchmark: feeds candidate options and family constraints to both a Generative LLM (narrative reasoning) and TypeSafe Jev System One (probabilistic decision model) to produce a structured human-evaluation comparison matrix.
 
 ### 6. `get_elfa_rates_and_rules`
 Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings, and regulatory guidelines.
@@ -123,8 +123,8 @@ Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-pas
 ### 3. Income Eligibility Check
 > *"We are a family of 4 living in San Francisco with a gross monthly income of $15,000. Do we qualify for ELFA Free Tuition or the Full Credit? What is our monthly voucher amount for a 2-year-old toddler and a 4-year-old preschooler?"*
 
-### 4. Head-to-Head A/B Evaluation (Gemini vs. TypeSafe Jev)
-> *"Run an A/B evaluation comparison between Gemini and TypeSafe Jev System One for top Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
+### 4. Head-to-Head A/B Evaluation (Generative LLM vs. TypeSafe Jev)
+> *"Run an A/B evaluation comparison between Generative LLMs and TypeSafe Jev System One for top Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
 
 ---
 

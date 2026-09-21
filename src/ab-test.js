@@ -28,8 +28,9 @@ export async function runABComparison({
     childAgeYears
   });
 
-  // 3. Model A: Gemini LLM Structured Heuristic Ranking
-  const geminiJudgments = candidates.map((cand, idx) => {
+  // 3. Model A: Generative LLM Structured Heuristic Ranking
+  const modelName = process.env.MODEL_NAME || 'Generative LLM (Claude/GPT/Gemini)';
+  const llmJudgments = candidates.map((cand, idx) => {
     const net = cand.estimatedNetOutOfPocketMonthly;
     let rationale = '';
     let rating = 'B';
@@ -50,14 +51,21 @@ export async function runABComparison({
       rating,
       netCost: net,
       rationale,
-      model: 'Gemini 3.8 Flash'
+      model: modelName
     };
   });
 
   // 4. Build Side-by-Side A/B Evaluation Matrix
   const matrix = candidates.map(c => {
     const j = jevJudgments.find(item => item.candidateName === c.name);
-    const g = geminiJudgments.find(item => item.candidateName === c.name);
+    const l = llmJudgments.find(item => item.candidateName === c.name);
+
+    const evalData = {
+      rank: l ? l.rank : null,
+      grade: l ? l.rating : null,
+      reasoning: l ? l.rationale : null,
+      model: l ? l.model : modelName
+    };
 
     return {
       candidateName: c.name,
@@ -65,11 +73,8 @@ export async function runABComparison({
       languages: c.languages,
       address: c.address,
       phone: c.phone,
-      geminiEval: {
-        rank: g ? g.rank : null,
-        grade: g ? g.rating : null,
-        reasoning: g ? g.rationale : null
-      },
+      llmEval: evalData,
+      geminiEval: evalData, // alias for backwards compatibility
       jevSystemOneEval: {
         decision: j ? j.recommendationChoice : null,
         compositeConfidenceScore: j ? (j.compositeScore || j.confidence) : null,
@@ -77,7 +82,7 @@ export async function runABComparison({
         immersionLevel: j?.immersionFit?.level || j?.immersionFitScore || null,
         dedicatedCenterProbability: j?.facilitySafety?.isDedicatedCenterProb ?? 0.99
       },
-      agreement: (g?.rating?.startsWith('A') && (j?.recommendationChoice === 'top_tier' || j?.recommendationChoice === 'strong_alternative'))
+      agreement: (l?.rating?.startsWith('A') && (j?.recommendationChoice === 'top_tier' || j?.recommendationChoice === 'strong_alternative'))
     };
   });
 
@@ -93,7 +98,7 @@ export async function runABComparison({
     matrix,
     evaluationSummary: {
       consensusAgreementRate: `${Math.round((matrix.filter(m => m.agreement).length / matrix.length) * 100)}%`,
-      geminiCharacteristics: 'Narrative reasoning, holistic explanation, grade classification',
+      llmCharacteristics: 'Narrative reasoning, holistic explanation, grade classification',
       jevCharacteristics: 'Deterministic System One probability distributions, atomic criteria scoring, zero hallucination risk'
     }
   };

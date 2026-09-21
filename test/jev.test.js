@@ -51,7 +51,8 @@ test('TypeSafe Jev Integration & A/B Evaluation', async (t) => {
 
     assert.ok(ab.matrix.length > 0);
     assert.ok(ab.evaluationSummary.consensusAgreementRate);
-    assert.ok(ab.matrix[0].geminiEval);
+    assert.ok(ab.matrix[0].llmEval);
+    assert.ok(ab.matrix[0].geminiEval); // backwards compatibility alias
     assert.ok(ab.matrix[0].jevSystemOneEval);
   });
 });

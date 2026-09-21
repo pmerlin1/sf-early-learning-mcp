@@ -49,7 +49,7 @@ async function runTests() {
     console.log(`- ${r.name} | Gross: $${r.grossMonthlyTuition} | Subsidy: -$${r.monthlySubsidyCredit} | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
   }
 
-  console.log('\n--- TEST 5: runABComparison (Gemini vs Jev System One) ---');
+  console.log('\n--- TEST 5: runABComparison (Generative LLM vs Jev System One) ---');
   const ab = await runABComparison({
     childAgeYears: 2.1,
     targetBudgetMonthly: 1200,
@@ -60,7 +60,7 @@ async function runTests() {
   for (const m of ab.matrix) {
     console.log(`Candidate: ${m.candidateName}`);
     console.log(`  Net Cost: $${m.netMonthlyCost}/mo`);
-    console.log(`  Gemini: Grade ${m.geminiEval.grade} | ${m.geminiEval.reasoning}`);
+    console.log(`  LLM: Grade ${m.llmEval.grade} | ${m.llmEval.reasoning}`);
     console.log(`  Jev: Decision '${m.jevSystemOneEval.decision}' | Immersion: ${m.jevSystemOneEval.immersionLevel} | Budget: ${m.jevSystemOneEval.budgetFitLevel}`);
   }
 

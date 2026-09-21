@@ -193,9 +193,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'compare_gemini_vs_jev',
+        name: 'compare_llm_vs_jev',
         description:
-          'A/B comparison between Gemini LLM narrative reasoning and TypeSafe Jev System One deterministic probability decision scoring for human evaluation of preschool recommendations.',
+          'A/B comparison between Generative LLM narrative reasoning (Claude, GPT, Gemini) and TypeSafe Jev System One deterministic probability decision scoring for human evaluation of preschool recommendations.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -332,6 +332,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'compare_llm_vs_jev':
       case 'compare_gemini_vs_jev': {
         const result = await runABComparison(args || {});
         return {
