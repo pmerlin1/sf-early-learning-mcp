@@ -45,30 +45,24 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
         const response = await client.systemOne({
           state,
           questions: {
-            budgetFit: score('Rate how well this option satisfies the family budget constraints', {
-              levels: {
-                perfect: 'Net monthly cost is $0 or well below target budget ($0-$200/mo)',
-                good: 'Net monthly cost is comfortably within budget ($200-$600/mo)',
-                moderate: 'Net monthly cost is close to budget limit ($600-$1200/mo)',
-                poor: 'Net monthly cost exceeds budget or causes financial strain (> $1200/mo)'
-              }
-            }),
-            immersionFit: score('Rate how well this program meets the requested language immersion goal', {
-              levels: {
-                full_immersion: 'Offers authentic, primary language immersion in the requested language',
-                bilingual_track: 'Offers dual-language or bilingual track including requested language',
-                exposure_only: 'Offers language exposure or secondary enrichment classes',
-                no_match: 'Does not offer the requested immersion language'
-              }
-            }),
+            budgetFit: score('Rate how well this preschool satisfies the family budget constraints ($1200/mo)', [
+              'Net monthly cost exceeds budget or causes financial strain (> $1200/mo)',
+              'Net monthly cost is close to budget limit ($600-$1200/mo)',
+              'Net monthly cost is comfortably within budget ($200-$600/mo)',
+              'Net monthly cost is $0 or well below target budget ($0-$200/mo)'
+            ]),
+            immersionFit: score('Rate how well this program meets the requested language immersion goal', [
+              'Does not offer the requested immersion language',
+              'Offers language exposure or secondary enrichment classes',
+              'Offers dual-language or bilingual track including requested language',
+              'Offers authentic, primary language immersion in the requested language'
+            ]),
             facilitySafety: noul('Is this program a dedicated licensed preschool center (and NOT a home daycare)?'),
             recommendation: choice('What is the overall recommendation for this family?', {
-              options: {
-                top_tier: 'Exceptional match on language, budget, and center facility',
-                strong_alternative: 'Very good option with minor compromises (e.g. slight out-of-pocket or waitlist)',
-                borderline: 'Meets basic criteria but may stretch budget or language depth',
-                unsuitable: 'Does not meet core safety, budget, or age criteria'
-              }
+              top_tier: 'Exceptional match on language, budget, and center facility',
+              strong_alternative: 'Very good option with minor compromises (e.g. slight out-of-pocket or waitlist)',
+              borderline: 'Meets basic criteria but may stretch budget or language depth',
+              unsuitable: 'Does not meet core safety, budget, or age criteria'
             })
           }
         });
@@ -78,8 +72,9 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences) {
           source: 'jev_live_api',
           budgetFitScore: response.answers.budgetFit.score,
           immersionFitScore: response.answers.immersionFit.score,
-          isDedicatedCenterProb: response.answers.facilitySafety.probability,
+          isDedicatedCenterProb: response.answers.facilitySafety.noul,
           recommendationChoice: response.answers.recommendation.choice,
+          probabilities: response.answers.recommendation.probabilities,
           confidence: response.answers.recommendation.confidence,
           netCost: candidate.estimatedNetOutOfPocketMonthly
         });
