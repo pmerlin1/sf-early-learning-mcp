@@ -13,7 +13,7 @@ import { calculateEligibility } from './eligibility.js';
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
-import { runABComparison } from './ab-test.js';
+import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
 import {
   ELFA_RATES_FY26_27,
@@ -155,8 +155,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             benefitTier: {
               type: 'string',
-              enum: ['halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
-              description: 'Pre-known ELFA benefit tier if already determined'
+              enum: ['privatePay', 'halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
+              description: 'Known tier; without income or tier data, privatePay is assumed so no subsidy is counted'
             },
             targetBudgetMonthly: {
               type: 'number',
@@ -198,9 +198,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'compare_llm_vs_jev',
+        name: 'compare_heuristic_vs_jev',
         description:
-          'A/B comparison between Generative LLM narrative reasoning (Claude, GPT, Gemini) and TypeSafe Jev System One deterministic probability decision scoring for human evaluation of preschool recommendations.',
+          'Compares a transparent rule-based budget heuristic with TypeSafe Jev System One evaluations. Requires TYPESAFE_API_KEY; this tool does not call a generative LLM.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -212,10 +212,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Family size (default 3)'
             },
+            monthlyIncome: {
+              type: 'number',
+              description: 'Gross monthly household income to determine the ELFA tier'
+            },
+            annualIncome: {
+              type: 'number',
+              description: 'Gross annual household income to determine the ELFA tier'
+            },
             benefitTier: {
               type: 'string',
-              enum: ['halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
-              description: 'ELFA benefit tier (default halfCreditELFA)'
+              enum: ['privatePay', 'halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
+              description: 'Known tier; defaults to privatePay so no subsidy is assumed'
             },
             targetBudgetMonthly: {
               type: 'number',
@@ -356,9 +364,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'compare_heuristic_vs_jev':
       case 'compare_llm_vs_jev':
       case 'compare_gemini_vs_jev': {
-        const result = await runABComparison(args || {});
+        const result = await runHeuristicVsJevComparison(args || {});
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
         };

@@ -1,14 +1,41 @@
-import { TypeSafeClient, score, choice, noul } from '@typesafe-ai/sdk';
+import { TypeSafeClient, score, choice } from '@typesafe-ai/sdk';
 import { evaluateProximity } from './geo-utils.js';
+import { isVerifiedLicensedFacility } from './ccld-utils.js';
+
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalScore(answer) {
+  return finiteNumber(answer?.score);
+}
+
+function scoreSummary(answer) {
+  if (!answer) return null;
+  return {
+    score: normalScore(answer),
+    confidence: finiteNumber(answer.confidence),
+    probabilities: answer.probabilities || null
+  };
+}
 
 /**
- * Evaluates and scores preschool candidates using TypeSafe Jev System One model.
- * Produces a nuanced meta composite score across location proximity, safety licensing,
- * budget, language immersion, and toddler development / diapering needs.
+ * Evaluate candidates with TypeSafe Jev System One.
+ * This function fails closed when Jev is not configured; it never substitutes local scores.
  */
-export async function evaluateCandidatesWithJev(candidates, userPreferences = {}) {
+export async function evaluateCandidatesWithJev(
+  candidates,
+  userPreferences = {},
+  { clientFactory } = {}
+) {
   const apiKey = process.env.TYPESAFE_API_KEY;
-  const isLive = Boolean(apiKey);
+  if (!apiKey) {
+    throw new Error(
+      'TYPESAFE_API_KEY is required for Jev evaluation. Configure the TypeSafe API key and retry.'
+    );
+  }
 
   const {
     targetBudgetMonthly = 1200,
@@ -20,17 +47,13 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences = {}
 
   const userLoc = homeZipCode || homeLocation;
   const hasUserLoc = Boolean(userLoc);
-
+  const client = clientFactory
+    ? clientFactory(apiKey)
+    : new TypeSafeClient({ apiKey });
   const results = [];
 
   for (const candidate of candidates) {
-    const ccld = candidate.ccldInspection || {};
-    const totalTypeA = ccld.totalTypeA || 0;
-    const totalTypeB = ccld.totalTypeB || 0;
-    const complaintVisits = ccld.complaintVisits || 0;
-    const substantiated = ccld.substantiatedAllegations || 0;
-
-    // Evaluate proximity if not already computed
+    const ccld = candidate.ccldInspection || null;
     const proximity = candidate.proximityLevel != null
       ? {
           distanceMiles: candidate.distanceMiles,
@@ -40,6 +63,27 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences = {}
         }
       : evaluateProximity(candidate.zipCode, candidate.location, userLoc);
 
+    if (!isVerifiedLicensedFacility(ccld)) {
+      results.push({
+        candidateEntityId: candidate.entityId,
+        candidateName: candidate.name,
+        source: 'not_evaluated_safety_unverified',
+        recommendationChoice: 'needs_verification',
+        compositeScore: null,
+        confidence: null,
+        probabilities: null,
+        netCost: candidate.estimatedNetOutOfPocketMonthly ?? null,
+        ccldVerificationStatus: ccld?.verificationStatus || 'unavailable',
+        inspectionDataStatus: ccld?.inspectionDataStatus || 'unavailable',
+        ccldSummary: ccld?.safetySummary || 'CCLD inspection history is unavailable or incomplete.',
+        distanceMiles: proximity.distanceMiles,
+        proximityRating: proximity.proximityRating
+      });
+      continue;
+    }
+
+    const hasExplicitDiaperingSupport = candidate.diaperingStatus === 'confirmed' ||
+      candidate.diaperingAccommodated === true;
     const state = {
       familyProfile: {
         childAgeYears,
@@ -47,208 +91,157 @@ export async function evaluateCandidatesWithJev(candidates, userPreferences = {}
         preferredLanguage,
         homeLocation: userLoc || 'San Francisco',
         wantsLicensedCenter: true,
-        pottyTrained: childAgeYears >= 3.0 // 2.1-year-olds need diapering accommodation
+        pottyTrained: childAgeYears >= 3
       },
       candidate: {
         name: candidate.name,
-        languages: candidate.languages,
-        address: candidate.address,
-        zipCode: candidate.zipCode,
+        languages: candidate.languages || [],
+        address: candidate.address || '',
+        zipCode: candidate.zipCode || '',
         grossMonthlyTuition: candidate.grossMonthlyTuition,
+        grossMonthlyTuitionMin: candidate.grossMonthlyTuitionMin,
+        grossMonthlyTuitionMax: candidate.grossMonthlyTuitionMax,
         monthlySubsidyCredit: candidate.monthlySubsidyCredit,
         netMonthlyCost: candidate.estimatedNetOutOfPocketMonthly,
         programType: candidate.programType,
-        schedule: candidate.schedule,
+        schedule: candidate.schedule || [],
         licenseNumber: candidate.licenseNumber,
+        licenseStatus: ccld.status,
         distanceFromHomeMiles: proximity.distanceMiles,
         proximityRating: proximity.proximityRating,
-        diaperingAccommodated: candidate.diaperingAccommodated !== false,
+        diaperingAccommodated: hasExplicitDiaperingSupport,
         ccldInspection: {
-          status: ccld.status || 'Licensed',
-          totalTypeA,
-          totalTypeB,
-          complaintVisits,
-          substantiatedAllegations: substantiated,
-          lastVisitDate: ccld.lastVisitDate || 'N/A'
+          status: ccld.status,
+          verificationStatus: ccld.verificationStatus,
+          inspectionDataStatus: ccld.inspectionDataStatus,
+          totalTypeA: ccld.totalTypeA,
+          totalTypeB: ccld.totalTypeB,
+          complaintVisits: ccld.complaintVisits,
+          substantiatedAllegations: ccld.substantiatedAllegations,
+          lastVisitDate: ccld.lastVisitDate
         },
-        description: candidate.description
+        description: candidate.description || ''
       }
     };
 
-    if (isLive) {
-      try {
-        const client = new TypeSafeClient({ apiKey });
-        const response = await client.systemOne({
-          state,
-          questions: {
-            locationConvenience: score('Rate how convenient and commutable this preschool location is for the family in San Francisco', [
-              'Long cross-town commute (> 4.5 miles) with heavy traffic congestion (e.g. Richmond to Bayview/Vis Valley)',
-              'Moderate cross-town commute (2.5 to 4.5 miles, e.g. Richmond to Mission or SOMA)',
-              'Convenient adjacent neighborhood (1.2 to 2.5 miles, e.g. Richmond to Presidio Heights or Sunset)',
-              'Immediate neighborhood or walking distance (< 1.2 miles or same zip code)'
-            ]),
-            safetyScore: score('Rate the state licensing inspection safety record of this facility', [
-              'Critical concern: Type A citations, active license restriction, or multiple substantiated complaint allegations',
-              'Notable caution: Multiple Type B citations or substantiated complaints on file requiring parental review',
-              'Minor technical finding: 1-2 isolated routine Type B recordkeeping/facility citations, fully resolved, 0 Type A, 0 substantiated allegations',
-              'Pristine safety record: Zero citations ever recorded, 0 substantiated complaints, spotless state inspection history'
-            ]),
-            budgetFit: score(`Rate how well this preschool satisfies the family budget constraints ($${targetBudgetMonthly}/mo)`, [
-              'Net monthly cost exceeds budget ceiling (> target budget)',
-              'Net monthly cost is close to budget limit',
-              'Net monthly cost is comfortably within budget',
-              'Net monthly cost is $0 or well below target budget'
-            ]),
-            immersionFit: score('Rate the depth and authenticity of the requested language immersion goal', [
-              'Does not offer the requested immersion language',
-              'Offers language exposure or secondary enrichment classes',
-              'Offers dual-language or bilingual track including requested language',
-              'Offers authentic, primary language immersion in the requested language'
-            ]),
-            toddlerDiaperingFit: score('Rate how well this program supports toddler developmental and diapering needs', [
-              'Unsuitable: Requires independent potty training for an unpotty-trained toddler',
-              'Ambiguous: Diapering support not explicitly confirmed',
-              'Accommodated: Accommodates diapering on-site',
-              'Optimal: Dedicated toddler license with diaper changing tables and supportive toilet learning'
-            ]),
-            recommendation: choice('What is the meta composite recommendation verdict for this family?', {
-              top_tier: 'Exceptional match across location proximity, safety, budget, language immersion, and toddler care',
-              strong_alternative: 'Very good option with minor compromises (e.g. adjacent neighborhood or 1 minor resolved technical finding)',
-              caution_flagged: 'Notable state citations, substantiated allegations, or budget stretch requiring parental caution',
-              unsuitable: 'Critical health/safety hazard, exceeds budget ceiling, or unsuited for child age'
-            })
-          }
-        });
-
-        const lScore = Number(response.answers.locationConvenience.score);
-        const sScore = Number(response.answers.safetyScore.score);
-        const bScore = Number(response.answers.budgetFit.score);
-        const iScore = Number(response.answers.immersionFit.score);
-        const tScore = Number(response.answers.toddlerDiaperingFit.score);
-
-        // Normalized 0 to 1
-        const lNorm = lScore / 3;
-        const sNorm = sScore / 3;
-        const bNorm = bScore / 3;
-        const iNorm = iScore / 3;
-        const tNorm = tScore / 3;
-
-        // Composite weighted score:
-        // Location Proximity: 25% (if user specified location)
-        // Safety: 25%
-        // Budget: 25%
-        // Immersion: 15%
-        // Toddler Diapering: 10%
-        let composite = 0;
-        if (hasUserLoc) {
-          composite = (lNorm * 0.25) + (sNorm * 0.25) + (bNorm * 0.25) + (iNorm * 0.15) + (tNorm * 0.10);
-        } else {
-          composite = (sNorm * 0.35) + (bNorm * 0.30) + (iNorm * 0.25) + (tNorm * 0.10);
+    const questions = {
+      locationConvenience: score(
+        'Rate how convenient and commutable this preschool location is for the family in San Francisco',
+        [
+          'Long cross-town commute (> 4.5 miles) with heavy traffic congestion',
+          'Moderate cross-town commute (2.5 to 4.5 miles)',
+          'Convenient adjacent neighborhood (1.2 to 2.5 miles)',
+          'Immediate neighborhood or walking distance (< 1.2 miles or same zip code)'
+        ]
+      ),
+      safetyScore: score(
+        'Rate the state licensing inspection safety record using only the verified CCLD data in the candidate record',
+        [
+          'Critical concern: Type A citations, non-current license status, or substantiated complaint allegations',
+          'Notable caution: Multiple Type B citations or complaint visits requiring parental review',
+          'Minor technical findings: 1-2 routine Type B findings or unsubstantiated complaint visits',
+          'Verified clear record: no citations or substantiated complaints in the complete CCLD history'
+        ]
+      ),
+      budgetFit: score(
+        'Rate how well this preschool satisfies the family budget constraints ($' +
+          targetBudgetMonthly + '/mo). Use the conservative end of any published rate range.',
+        [
+          'Net monthly cost exceeds budget ceiling',
+          'Net monthly cost is close to budget limit',
+          'Net monthly cost is comfortably within budget',
+          'Net monthly cost is $0 or well below target budget'
+        ]
+      ),
+      immersionFit: score(
+        'Rate the depth and authenticity of the requested language immersion goal from the provider information',
+        [
+          'Does not offer the requested immersion language',
+          'Offers language exposure or secondary enrichment classes',
+          'Offers dual-language or bilingual track including requested language',
+          'Offers authentic, primary language immersion in the requested language'
+        ]
+      ),
+      toddlerDiaperingFit: score(
+        'Rate how well this program supports toddler developmental and diapering needs using explicit provider evidence',
+        [
+          'Unsuitable: provider explicitly requires independent potty training for an unpotty-trained toddler',
+          'Not confirmed: diapering support is not explicitly documented',
+          'Accommodated: provider explicitly confirms on-site diapering',
+          'Optimal: dedicated toddler classroom and explicit diapering support'
+        ]
+      ),
+      recommendation: choice(
+        'What is the overall recommendation for this family, considering the candidate facts and preferences?',
+        {
+          top_tier: 'Exceptional match across safety, budget, language immersion, location, and toddler care',
+          strong_alternative: 'Very good option with manageable compromises',
+          caution_flagged: 'Notable licensing concerns, weak fit, or budget stretch requiring parental review',
+          unsuitable: 'Does not meet the family requirements',
+          needs_verification: 'Critical safety, rate, or age information is not verified'
         }
+      )
+    };
 
-        results.push({
-          candidateName: candidate.name,
-          source: 'jev_live_api',
-          locationConvenienceScore: lScore,
-          proximityRating: proximity.proximityRating,
-          distanceMiles: proximity.distanceMiles,
-          safetyScore: sScore,
-          safetyRating: sScore >= 2.5 ? 'Pristine' : (sScore >= 1.5 ? 'Minor resolved findings' : 'Caution flagged'),
-          budgetFitScore: bScore,
-          immersionFitScore: iScore,
-          toddlerDiaperingScore: tScore,
-          recommendationChoice: response.answers.recommendation.choice,
-          probabilities: response.answers.recommendation.probabilities,
-          confidence: response.answers.recommendation.confidence,
-          compositeScore: Number(composite.toFixed(3)),
-          netCost: candidate.estimatedNetOutOfPocketMonthly,
-          ccldSummary: ccld.safetySummary || 'Licensed child care center'
-        });
-        continue;
-      } catch (err) {
-        console.error(`Jev live API error for ${candidate.name}, using calibrated composite model:`, err.message);
-      }
+    try {
+      const response = await client.systemOne({ state, questions });
+      const answers = response.answers || {};
+      const location = scoreSummary(answers.locationConvenience);
+      const safety = scoreSummary(answers.safetyScore);
+      const budget = scoreSummary(answers.budgetFit);
+      const immersion = scoreSummary(answers.immersionFit);
+      const diapering = scoreSummary(answers.toddlerDiaperingFit);
+
+      const weights = hasUserLoc
+        ? { location: 0.25, safety: 0.25, budget: 0.25, immersion: 0.15, diapering: 0.10 }
+        : { safety: 0.35, budget: 0.30, immersion: 0.25, diapering: 0.10 };
+      const normalized = {
+        location: !location || location.score === null ? null : location.score / 3,
+        safety: !safety || safety.score === null ? null : safety.score / 3,
+        budget: !budget || budget.score === null ? null : budget.score / 3,
+        immersion: !immersion || immersion.score === null ? null : immersion.score / 3,
+        diapering: !diapering || diapering.score === null ? null : diapering.score / 3
+      };
+      const composite = Object.entries(weights).reduce(
+        (total, [criterion, weight]) => total + (normalized[criterion] ?? 0) * weight,
+        0
+      );
+
+      results.push({
+        candidateEntityId: candidate.entityId,
+        candidateName: candidate.name,
+        source: 'jev_live_api',
+        model: response.model || null,
+        usage: response.usage || null,
+        locationConvenienceScore: location?.score ?? null,
+        safetyScore: safety?.score ?? null,
+        safetyRating: !safety || safety.score === null
+          ? 'Unknown'
+          : (safety.score >= 2.5 ? 'Verified clear or minor findings' : 'Review required'),
+        budgetFitScore: budget?.score ?? null,
+        immersionFitScore: immersion?.score ?? null,
+        toddlerDiaperingScore: diapering?.score ?? null,
+        scoreDistributions: {
+          locationConvenience: location,
+          safety: safety,
+          budget: budget,
+          immersion: immersion,
+          toddlerDiapering: diapering
+        },
+        recommendationChoice: answers.recommendation?.choice || null,
+        probabilities: answers.recommendation?.probabilities || null,
+        confidence: finiteNumber(answers.recommendation?.confidence),
+        compositeScore: Number(composite.toFixed(3)),
+        netCost: candidate.estimatedNetOutOfPocketMonthly ?? null,
+        ccldSummary: ccld.safetySummary
+      });
+    } catch (error) {
+      throw new Error('Jev evaluation failed for ' + candidate.name + ': ' + error.message, {
+        cause: error
+      });
     }
-
-    // Calibrated Jev System One decision logic (when TYPESAFE_API_KEY is not set or on fallback)
-    const netCost = candidate.estimatedNetOutOfPocketMonthly ?? 9999;
-    const langs = (candidate.languages || []).map(l => l.toLowerCase());
-    const targetLang = (preferredLanguage || '').toLowerCase();
-    const hasLang = langs.some(l => l.includes(targetLang)) ||
-      (candidate.description || '').toLowerCase().includes(targetLang);
-
-    // 1. Location proximity score (0 to 3)
-    const lScore = proximity.proximityLevel;
-
-    // 2. Safety scoring (0 to 3)
-    let sScore = 3.0;
-    let sRating = 'Pristine';
-    if (totalTypeA > 0 || substantiated > 0) {
-      sScore = 0.5;
-      sRating = 'Caution flagged';
-    } else if (totalTypeB > 2 || complaintVisits > 2) {
-      sScore = 1.2;
-      sRating = 'Notable citations';
-    } else if (totalTypeB > 0 || complaintVisits > 0) {
-      sScore = 2.2; // 1-2 minor Type B resolved: small ding, not disqualified
-      sRating = 'Minor resolved findings';
-    }
-
-    // 3. Budget scoring (0 to 3)
-    let bScore = 0.0;
-    if (netCost <= 100) {
-      bScore = 3.0;
-    } else if (netCost <= 300) {
-      bScore = 2.6;
-    } else if (netCost <= 600) {
-      bScore = 2.0;
-    } else if (netCost <= targetBudgetMonthly) {
-      bScore = 1.2;
-    }
-
-    // 4. Immersion scoring (0 to 3)
-    let iScore = hasLang ? 2.8 : 0.2;
-
-    // 5. Toddler diapering (0 to 3)
-    let tScore = candidate.diaperingAccommodated !== false ? 3.0 : 0.5;
-
-    // Composite weighted score (0 to 1)
-    let composite = 0;
-    if (hasUserLoc) {
-      composite = ((lScore / 3) * 0.25) + ((sScore / 3) * 0.25) + ((bScore / 3) * 0.25) + ((iScore / 3) * 0.15) + ((tScore / 3) * 0.10);
-    } else {
-      composite = ((sScore / 3) * 0.35) + ((bScore / 3) * 0.30) + ((iScore / 3) * 0.25) + ((tScore / 3) * 0.10);
-    }
-
-    let recommendation = 'unsuitable';
-    if (sScore >= 2.0 && bScore >= 2.0 && iScore >= 2.0 && (!hasUserLoc || lScore >= 1.5)) {
-      recommendation = 'top_tier';
-    } else if (sScore >= 1.5 && bScore >= 1.0 && iScore >= 1.5) {
-      recommendation = 'strong_alternative';
-    } else if (sScore < 1.5 || bScore === 0) {
-      recommendation = sScore < 1.5 ? 'caution_flagged' : 'unsuitable';
-    }
-
-    results.push({
-      candidateName: candidate.name,
-      source: 'jev_system_one_simulated',
-      locationConvenienceScore: lScore,
-      proximityRating: proximity.proximityRating,
-      distanceMiles: proximity.distanceMiles,
-      safetyScore: sScore,
-      safetyRating: sRating,
-      budgetFitScore: bScore,
-      immersionFitScore: iScore,
-      toddlerDiaperingScore: tScore,
-      recommendationChoice: recommendation,
-      compositeScore: Number(composite.toFixed(3)),
-      confidence: 0.93,
-      netCost,
-      ccldSummary: ccld.safetySummary || 'Licensed child care center'
-    });
   }
 
-  // Sort by composite score
-  results.sort((a, b) => (b.compositeScore || 0) - (a.compositeScore || 0));
+  results.sort((a, b) => (b.compositeScore ?? -1) - (a.compositeScore ?? -1));
   return results;
 }

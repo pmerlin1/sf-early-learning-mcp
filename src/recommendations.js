@@ -2,53 +2,79 @@ import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { calculateEligibility } from './eligibility.js';
 import { ELFA_RATES_FY26_27 } from './constants.js';
 import { evaluateProximity } from './geo-utils.js';
+import { isVerifiedLicensedFacility } from './ccld-utils.js';
+import {
+  checkClassroomAge,
+  getPublishedMonthlyRate,
+  isRateSafeForBudget,
+  estimateOutOfPocket,
+  rankCandidates
+} from './recommendation-utils.js';
 
-export async function getRecommendations(params = {}) {
+function normalizeTier(tier) {
+  if (tier === 'elfaHalfCredit' || tier === 'halfCreditELFA') return 'halfCreditELFA';
+  if (tier === 'elfaFullCredit' || tier === 'fullCreditELFA') return 'fullCreditELFA';
+  if (
+    tier === 'elfaFreeTuition' ||
+    tier === 'cctrStateAndElfaFree' ||
+    tier === 'freeTuitionELFA'
+  ) return 'freeTuitionELFA';
+  return 'privatePay';
+}
+
+function subsidyForTier(tier, ageCategory) {
+  if (tier === 'halfCreditELFA') {
+    return ELFA_RATES_FY26_27.halfCreditMonthly[ageCategory];
+  }
+  if (tier === 'fullCreditELFA' || tier === 'freeTuitionELFA') {
+    return ELFA_RATES_FY26_27.fullTimeMonthlyReimbursement[ageCategory].rate;
+  }
+  return 0;
+}
+
+export async function getRecommendations(
+  params = {},
+  { search = searchProfiles, getDetails = getSiteDetails } = {}
+) {
   const {
     childAgeYears = 2.1,
     familySize = 3,
     monthlyIncome,
     annualIncome,
-    benefitTier, // e.g. 'halfCreditELFA', 'freeTuitionELFA', 'fullCreditELFA'
+    benefitTier,
     targetBudgetMonthly = 1200,
-    preferredLanguage, // e.g. 'Spanish', 'Mandarin', 'Cantonese', 'French'
-    homeZipCode, // e.g. 94121 or neighborhood
-    homeLocation, // e.g. '94121' or 'Outer Richmond'
+    preferredLanguage,
+    homeZipCode,
+    homeLocation,
     programType = 'licensedCenter',
-    schedule, // 'partTime', 'fullTime', or undefined
+    schedule,
     maxResults = 10
   } = params;
 
-  // 1. Calculate or extract benefit tier
-  let subsidyAmount = 0;
-  let activeTier = benefitTier;
   const childMonths = Number(childAgeYears) * 12;
-  const ageCategory = childMonths < 24 ? 'infant' : (childMonths < 36 ? 'toddler' : 'preschool');
-
-  if (monthlyIncome !== undefined || annualIncome !== undefined) {
-    const el = calculateEligibility({ familySize, monthlyIncome, annualIncome, childAgeYears });
-    activeTier = el.tier === 'elfaHalfCredit' ? 'halfCreditELFA' :
-                 (el.tier === 'elfaFullCredit' ? 'fullCreditELFA' :
-                 (el.tier === 'elfaFreeTuition' ? 'freeTuitionELFA' : 'privatePay'));
-    subsidyAmount = el.monthlyCreditAmount;
-  } else if (benefitTier) {
-    if (benefitTier.includes('half') || benefitTier === 'halfCreditELFA') {
-      subsidyAmount = ELFA_RATES_FY26_27.halfCreditMonthly[ageCategory];
-      activeTier = 'halfCreditELFA';
-    } else if (benefitTier.includes('full') || benefitTier === 'fullCreditELFA') {
-      subsidyAmount = ELFA_RATES_FY26_27.fullTimeMonthlyReimbursement[ageCategory].rate;
-      activeTier = 'fullCreditELFA';
-    } else if (benefitTier.includes('free') || benefitTier === 'freeTuitionELFA') {
-      subsidyAmount = 999999; // 100% free
-      activeTier = 'freeTuitionELFA';
-    }
-  } else {
-    // Default to ELFA Half Credit if not specified
-    subsidyAmount = ELFA_RATES_FY26_27.halfCreditMonthly[ageCategory];
-    activeTier = 'halfCreditELFA';
+  if (!Number.isFinite(childMonths) || childMonths < 0) {
+    throw new Error('childAgeYears must be a non-negative number.');
+  }
+  if (!Number.isFinite(Number(targetBudgetMonthly)) || Number(targetBudgetMonthly) < 0) {
+    throw new Error('targetBudgetMonthly must be a non-negative number.');
   }
 
-  // 2. Search CareWait for matching profiles
+  const ageCategory = childMonths < 24 ? 'infant' : (childMonths < 36 ? 'toddler' : 'preschool');
+
+  let activeTier = 'privatePay';
+  if (monthlyIncome !== undefined || annualIncome !== undefined) {
+    const eligibility = calculateEligibility({
+      familySize,
+      monthlyIncome,
+      annualIncome,
+      childAgeYears
+    });
+    activeTier = normalizeTier(eligibility.tier);
+  } else if (benefitTier) {
+    activeTier = normalizeTier(benefitTier);
+  }
+
+  const subsidyAmount = subsidyForTier(activeTier, ageCategory);
   const searchFilter = {
     ageYears: Math.floor(childAgeYears),
     programType,
@@ -58,84 +84,59 @@ export async function getRecommendations(params = {}) {
     take: 50
   };
 
-  const searchRes = await searchProfiles(searchFilter);
+  const searchRes = await search(searchFilter);
   const items = searchRes.items || [];
-
-  // 3. For the matching search items, inspect details and compute net cost
   const detailedCandidates = [];
+  const lookupWarnings = [];
   const candidateBatch = items.slice(0, 25);
 
   for (const item of candidateBatch) {
     try {
-      const site = await getSiteDetails(item.entityId);
-      if (!site) continue;
-
-      // Check age compatibility
-      let acceptsAge = false;
-      for (const prog of site.programsOffered) {
-        if (prog.minAgeMonths <= childMonths + 0.5 && prog.maxAgeMonths >= childMonths - 0.5) {
-          acceptsAge = true;
-          break;
-        }
-      }
-      if (!acceptsAge && site.programsOffered.length > 0) {
-        // Double check overall min/max
-        const minM = Number(site.minAge) * 12;
-        const maxM = Number(site.maxAge) * 12;
-        if (!isNaN(minM) && !isNaN(maxM) && (childMonths < minM || childMonths > maxM)) {
-          continue;
-        }
+      const site = await getDetails(item.entityId);
+      if (!site) {
+        lookupWarnings.push({
+          entityId: item.entityId,
+          reason: 'provider_details_missing'
+        });
+        continue;
       }
 
-      // Check language fit if preferred
+      const ageFit = checkClassroomAge(childMonths, site.programsOffered);
+      if (ageFit.status === 'incompatible') continue;
+
       if (preferredLanguage) {
-        const pLangLower = preferredLanguage.toLowerCase();
-        const siteLangs = site.languages.map(l => l.toLowerCase());
-        const descLower = site.description.toLowerCase();
-        const nameLower = site.name.toLowerCase();
-        const hasLang = siteLangs.some(l => l.includes(pLangLower)) ||
-                        descLower.includes(pLangLower) ||
-                        nameLower.includes(pLangLower);
-        if (!hasLang) {
-          continue;
-        }
+        const preferred = preferredLanguage.toLowerCase();
+        const siteLanguages = (site.languages || []).map((language) => String(language).toLowerCase());
+        const description = String(site.description || '').toLowerCase();
+        const name = String(site.name || '').toLowerCase();
+        const hasLanguage = siteLanguages.some((language) => language.includes(preferred)) ||
+          description.includes(preferred) ||
+          name.includes(preferred);
+        if (!hasLanguage) continue;
       }
 
-      // Calculate gross tuition and net out-of-pocket
-      const rates = site.monthlyRates;
-      let grossTuition = null;
-      let rateType = 'unknown';
-      let rateStatus = 'verified';
+      const rate = getPublishedMonthlyRate(site.monthlyRates, ageCategory);
+      const hasCompleteRate = isRateSafeForBudget(rate.status);
+      const freeTier = activeTier === 'freeTuitionELFA';
+      const grossTuition = rate.conservativeGross;
+      const costEstimate = estimateOutOfPocket(rate, subsidyAmount, freeTier);
+      const netMonthly = costEstimate.estimate;
+      const costEstimateBasis = freeTier
+        ? 'ELFA free-tuition copay, conditional on an approved award and available funded slot'
+        : (hasCompleteRate
+          ? 'Published CareWait rate minus the applicable ELFA credit; upper end used for budget fit'
+          : 'Unverified or incomplete published rate');
 
-      if (ageCategory === 'toddler' && rates.toddler && (rates.toddler.max || rates.toddler.min)) {
-        grossTuition = rates.toddler.min || rates.toddler.max;
-        rateType = 'toddler';
-      } else if (rates.preschool && (rates.preschool.max || rates.preschool.min)) {
-        grossTuition = rates.preschool.min || rates.preschool.max;
-        rateType = 'preschool';
-      } else if (ageCategory === 'infant' && rates.infant && (rates.infant.max || rates.infant.min)) {
-        grossTuition = rates.infant.min || rates.infant.max;
-        rateType = 'infant';
-      }
-
-      let netMonthly = null;
-      const notesLower = (site.rateNotes || '').toLowerCase();
-      const isExplicitDecCap = notesLower.includes('elfa') || notesLower.includes('dec') || notesLower.includes('head start');
-
-      if (activeTier === 'freeTuitionELFA') {
-        netMonthly = 0;
-      } else if (grossTuition !== null) {
-        netMonthly = Math.max(0, grossTuition - subsidyAmount);
-      } else if (isExplicitDecCap) {
-        // e.g. Kai Ming sites explicitly state slots follow published DEC schedule ($1,153)
-        grossTuition = subsidyAmount;
-        netMonthly = 0;
-        rateStatus = 'dec_capped_slot';
-      } else {
-        // Unverified / blank in city database (like New Journey or private providers)
-        rateStatus = 'unverified_blank_rates';
-      }
-
+      const ccld = site.ccldInspection || null;
+      const ccldVerificationStatus = ccld?.verificationStatus || 'unavailable';
+      const inspectionDataStatus = ccld?.inspectionDataStatus || 'unavailable';
+      const licenseStatus = ccld?.status || null;
+      const ccldVerified = isVerifiedLicensedFacility(ccld);
+      const diaperingStatus = ageCategory !== 'toddler'
+        ? 'not_required'
+        : ((site.diaperingStatus === 'confirmed' || site.diaperingAccommodated === true)
+          ? 'confirmed'
+          : 'unknown');
       const userLocation = homeZipCode || homeLocation;
       const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
 
@@ -148,54 +149,92 @@ export async function getRecommendations(params = {}) {
         phone: site.phone,
         email: site.email,
         programType: site.programType,
-        languages: site.languages,
-        programs: site.programsOffered.map(p => `${p.name} (${p.minAgeMonths}-${p.maxAgeMonths} mo)`),
+        languages: site.languages || [],
+        programs: (site.programsOffered || []).map((program) =>
+          program.name + ' (' + program.minAgeMonths + '-' + program.maxAgeMonths + ' mo)'
+        ),
+        ageFitStatus: ageFit.status,
         grossMonthlyTuition: grossTuition,
+        grossMonthlyTuitionMin: rate.min,
+        grossMonthlyTuitionMax: rate.max,
         monthlySubsidyCredit: subsidyAmount,
         estimatedNetOutOfPocketMonthly: netMonthly,
-        rateStatus,
-        rateNotes: site.rateNotes,
-        schedule: site.schedule,
-        description: site.description,
+        estimatedNetOutOfPocketMonthlyMin: costEstimate.min,
+        estimatedNetOutOfPocketMonthlyMax: costEstimate.max,
+        costEstimateBasis,
+        rateStatus: rate.status,
+        rateNotes: site.rateNotes || '',
+        schedule: site.schedule || [],
+        description: site.description || '',
         licenseNumber: site.licenseNumber,
-        ccldInspection: site.ccldInspection,
-        diaperingAccommodated: site.diaperingAccommodated,
+        licenseStatus,
+        ccldVerificationStatus,
+        inspectionDataStatus,
+        safetySummary: ccld?.safetySummary || 'CCLD inspection history is unavailable or incomplete.',
+        ccldInspection: ccld,
+        diaperingAccommodated: diaperingStatus === 'confirmed',
+        diaperingStatus,
         distanceMiles: proximity.distanceMiles,
         proximityRating: proximity.proximityRating,
         proximityLevel: proximity.proximityLevel,
-        isImmediateNeighborhood: proximity.isImmediateNeighborhood
+        isImmediateNeighborhood: proximity.isImmediateNeighborhood,
+        _hasCompleteRate: hasCompleteRate,
+        _ccldVerified: ccldVerified,
+        _diaperingVerified: diaperingStatus === 'confirmed' || diaperingStatus === 'not_required'
       });
-    } catch (e) {
-      // skip on error
+    } catch (error) {
+      lookupWarnings.push({
+        entityId: item.entityId,
+        reason: 'provider_details_lookup_failed'
+      });
     }
   }
 
-  // 4. Partition candidates into within-budget, stretch options, and unverified rates
   const userLoc = homeZipCode || homeLocation;
-  const rankFn = (a, b) => {
-    const costA = a.estimatedNetOutOfPocketMonthly !== null ? a.estimatedNetOutOfPocketMonthly : 99999;
-    const costB = b.estimatedNetOutOfPocketMonthly !== null ? b.estimatedNetOutOfPocketMonthly : 99999;
-    if (userLoc) {
-      const distA = a.distanceMiles !== null ? a.distanceMiles : 99;
-      const distB = b.distanceMiles !== null ? b.distanceMiles : 99;
-      if (Math.abs(distA - distB) > 1.5) {
-        return distA - distB;
-      }
-    }
-    return costA - costB;
-  };
+  const eligibleCandidates = detailedCandidates.filter((candidate) => candidate._ccldVerified);
+  const rateVerified = eligibleCandidates.filter((candidate) =>
+    candidate.ageFitStatus === 'compatible' &&
+    candidate._diaperingVerified &&
+    candidate._hasCompleteRate &&
+    candidate.estimatedNetOutOfPocketMonthly !== null
+  );
 
-  const withinBudget = detailedCandidates
-    .filter(c => c.estimatedNetOutOfPocketMonthly !== null && c.estimatedNetOutOfPocketMonthly <= targetBudgetMonthly)
-    .sort(rankFn);
+  const withinBudget = rankCandidates(
+    rateVerified.filter((candidate) =>
+      candidate.estimatedNetOutOfPocketMonthly <= targetBudgetMonthly
+    ),
+    userLoc
+  );
 
-  const stretchOptions = detailedCandidates
-    .filter(c => c.estimatedNetOutOfPocketMonthly !== null && c.estimatedNetOutOfPocketMonthly > targetBudgetMonthly)
-    .sort((a, b) => (a.estimatedNetOutOfPocketMonthly || 0) - (b.estimatedNetOutOfPocketMonthly || 0));
+  const stretchOptions = rankCandidates(
+    rateVerified.filter((candidate) =>
+      candidate.estimatedNetOutOfPocketMonthly > targetBudgetMonthly
+    ),
+    null
+  );
 
-  const unverified = detailedCandidates
-    .filter(c => c.rateStatus === 'unverified_blank_rates')
-    .sort((a, b) => (a.distanceMiles || 99) - (b.distanceMiles || 99));
+  const unverifiedRates = detailedCandidates
+    .filter((candidate) => !candidate._hasCompleteRate)
+    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+
+  const unverifiedSafety = detailedCandidates
+    .filter((candidate) => !candidate._ccldVerified)
+    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+
+  const unverifiedAge = detailedCandidates
+    .filter((candidate) => candidate.ageFitStatus === 'unknown')
+    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+
+  const unverifiedDiapering = detailedCandidates
+    .filter((candidate) => candidate.diaperingStatus === 'unknown')
+    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+
+  const publicCandidates = (candidates) => candidates.map(({
+    _hasCompleteRate,
+    _ccldVerified,
+    _diaperingVerified,
+    ...candidate
+  }) => candidate);
 
   return {
     childAgeYears,
@@ -206,8 +245,12 @@ export async function getRecommendations(params = {}) {
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
     totalFound: detailedCandidates.length,
-    recommendations: withinBudget.slice(0, maxResults),
-    stretchOptions: stretchOptions.slice(0, 3),
-    unverifiedRateCandidates: unverified.slice(0, 3)
+    recommendations: publicCandidates(withinBudget.slice(0, maxResults)),
+    stretchOptions: publicCandidates(stretchOptions.slice(0, 3)),
+    unverifiedRateCandidates: publicCandidates(unverifiedRates.slice(0, 3)),
+    unverifiedSafetyCandidates: publicCandidates(unverifiedSafety.slice(0, 10)),
+    unverifiedAgeCandidates: publicCandidates(unverifiedAge.slice(0, 10)),
+    unverifiedDiaperingCandidates: publicCandidates(unverifiedDiapering.slice(0, 10)),
+    lookupWarnings
   };
 }

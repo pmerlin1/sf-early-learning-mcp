@@ -1,7 +1,7 @@
 import { calculateEligibility } from '../src/eligibility.js';
 import { searchProfiles, getSiteDetails } from '../src/carewait-client.js';
 import { getRecommendations } from '../src/recommendations.js';
-import { runABComparison } from '../src/ab-test.js';
+import { runHeuristicVsJevComparison } from '../src/ab-test.js';
 
 async function runTests() {
   console.log('--- TEST 1: calculateEligibility ---');
@@ -49,19 +49,19 @@ async function runTests() {
     console.log(`- ${r.name} | Gross: $${r.grossMonthlyTuition} | Subsidy: -$${r.monthlySubsidyCredit} | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
   }
 
-  console.log('\n--- TEST 5: runABComparison (Generative LLM vs Jev System One) ---');
-  const ab = await runABComparison({
+  console.log('\n--- TEST 5: rule-based heuristic vs live Jev System One ---');
+  const ab = await runHeuristicVsJevComparison({
     childAgeYears: 2.1,
     targetBudgetMonthly: 1200,
     preferredLanguage: 'Spanish',
     candidateCount: 3
   });
-  console.log('Consensus agreement rate:', ab.evaluationSummary.consensusAgreementRate);
+  console.log('Agreement rate:', ab.evaluationSummary.agreementRate ?? 'N/A');
   for (const m of ab.matrix) {
     console.log(`Candidate: ${m.candidateName}`);
     console.log(`  Net Cost: $${m.netMonthlyCost}/mo`);
-    console.log(`  LLM: Grade ${m.llmEval.grade} | ${m.llmEval.reasoning}`);
-    console.log(`  Jev: Decision '${m.jevSystemOneEval.decision}' | Immersion: ${m.jevSystemOneEval.immersionLevel} | Budget: ${m.jevSystemOneEval.budgetFitLevel}`);
+    console.log(`  Heuristic: Grade ${m.heuristicEval.rating} | ${m.heuristicEval.rationale}`);
+    console.log(`  Jev: Decision '${m.jevSystemOneEval.decision}' | Composite: ${m.jevSystemOneEval.compositeScore}`);
   }
 
   console.log('\nAll tests passed successfully!');

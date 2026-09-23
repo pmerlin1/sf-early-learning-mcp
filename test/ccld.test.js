@@ -1,26 +1,73 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getFacilityDetail, searchFacilities } from '../src/ccld-client.js';
+import { getFacilityDetail } from '../src/ccld-client.js';
+import { summarizeInspectionRecord } from '../src/ccld-utils.js';
 
-test('CCLD Transparency Client - State Licensing & Inspections', async (t) => {
-  await t.test('Fetches real facility inspection record for Kai Ming Geary (#384001291)', async () => {
-    const detail = await getFacilityDetail('384001291');
-    assert.ok(detail);
-    assert.equal(detail.licenseNumber, '384001291');
-    assert.equal(detail.status, 'Licensed');
-    assert.equal(detail.capacity, 49);
-    assert.equal(detail.totalTypeA, 0);
-    assert.equal(detail.totalTypeB, 0);
-    assert.equal(detail.substantiatedAllegations, 0);
-    assert.equal(detail.rating, 'pristine');
-    assert.equal(detail.isToddlerOptionExplicit, true);
+const completeZeroFindingsRecord = {
+  STATUS: 'Licensed',
+  CAPACITY: '49',
+  LASTVISITDATE: '2026-01-01',
+  NBRINSPTYPA: '0',
+  NBRCMPLTTYPA: '0',
+  TOTTYPEA: '0',
+  NBRINSPTYPB: '0',
+  NBRCMPLTTYPB: '0',
+  TOTTYPEB: '0',
+  NBRCMPLTVISITS: '0',
+  TOTSUBALG: '0'
+};
+
+test('CCLD record quality distinguishes zero findings from missing findings', async (t) => {
+  await t.test('labels complete all-zero data as clear', () => {
+    const result = summarizeInspectionRecord(completeZeroFindingsRecord);
+    assert.equal(result.verificationStatus, 'verified');
+    assert.equal(result.inspectionDataStatus, 'complete');
+    assert.equal(result.rating, 'pristine');
+    assert.equal(result.totalTypeA, 0);
+    assert.equal(result.totalTypeB, 0);
   });
 
-  await t.test('Searches child care facilities in 94121', async () => {
-    const list = await searchFacilities({ zipCode: 94121 });
-    assert.ok(Array.isArray(list));
-    assert.ok(list.length > 0);
-    const hasKaiMing = list.some(f => f.FACILITYNAME.includes('KAI MING'));
-    assert.ok(hasKaiMing);
+  await t.test('keeps missing citation counts unknown', () => {
+    const result = summarizeInspectionRecord({
+      STATUS: 'Licensed',
+      NBRINSPTYPA: null,
+      NBRCMPLTTYPA: null,
+      TOTTYPEA: null,
+      NBRINSPTYPB: null,
+      NBRCMPLTTYPB: null,
+      TOTTYPEB: null,
+      NBRCMPLTVISITS: null,
+      TOTCMPVISITS: null,
+      TOTSUBALG: null
+    });
+    assert.equal(result.verificationStatus, 'verified');
+    assert.equal(result.inspectionDataStatus, 'incomplete');
+    assert.equal(result.rating, 'unknown');
+    assert.equal(result.totalTypeA, null);
+    assert.match(result.safetySummary, /unavailable or incomplete/);
+  });
+
+  await t.test('does not call a non-licensed facility pristine', () => {
+    const result = summarizeInspectionRecord({
+      ...completeZeroFindingsRecord,
+      STATUS: 'Closed'
+    });
+    assert.equal(result.rating, 'caution');
+    assert.match(result.safetySummary, /not currently confirmed as licensed/);
+  });
+
+  await t.test('reports a CCLD HTTP failure as unavailable, not zero citations', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('', { status: 503 });
+    try {
+      const result = await getFacilityDetail('fixture-unavailable-license');
+      assert.equal(result.verificationStatus, 'unavailable');
+      assert.equal(result.inspectionDataStatus, 'unavailable');
+      assert.equal(result.status, null);
+      assert.equal(result.rating, 'unknown');
+      assert.equal(result.totalTypeA, null);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

@@ -2,7 +2,7 @@
 
 An authoritative [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for navigating San Francisco's **Department of Early Childhood (DEC)** preschool network, **Early Learning For All (ELFA)** financial subsidies, and real-time **CareWait** database searches.
 
-Includes a **TypeSafe Jev System One** decision engine and **A/B evaluation matrix** comparing deterministic probability scoring against generative LLM judgments (Claude, GPT, Gemini, etc.).
+Includes a **TypeSafe Jev System One** evaluator and a comparison matrix for Jev's live model judgments versus a transparent local budget heuristic.
 
 ---
 
@@ -10,9 +10,9 @@ Includes a **TypeSafe Jev System One** decision engine and **A/B evaluation matr
 
 - **Live CareWait Search**: Search 500+ licensed San Francisco preschools and child care centers with real-time filters for age, language immersion, facility type, schedule (full-time vs part-time), and subsidy programs.
 - **Authoritative FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits.
-- **Automated Net Out-of-Pocket Calculation**: Automatically calculates family subsidy discounts and estimates true monthly net tuition (`Math.max(0, grossTuition - subsidy)`).
-- **TypeSafe Jev System One Integration**: Leverages TypeSafe's Jev model (`@typesafe-ai/sdk`) for typed decision primitives (`score`, `choice`, `noul`) to rank options with calibrated confidence rather than hallucinated generative text.
-- **A/B Human Evaluation Tool**: Side-by-side comparison matrix of Generative LLM narrative recommendations vs Jev System One probability distributions.
+- **Net Out-of-Pocket Estimates**: Applies the applicable credit to a published tuition rate, uses the conservative end of a known range for budget fit, and leaves blank or incomplete rates unverified.
+- **TypeSafe Jev System One Integration**: Uses TypeSafe's JavaScript SDK with typed `score` and `choice` questions. Jev judgments require `TYPESAFE_API_KEY`; they do not replace official records or deterministic eligibility checks.
+- **Heuristic Comparison Tool**: Compares Jev's live model output with a rule-based budget heuristic. No generative LLM is called.
 
 ---
 
@@ -47,8 +47,8 @@ Fetches complete provider details by `entityId`: licensed classrooms, age limits
 ### 4. `get_smart_recommendations`
 All-in-one recommendation engine: takes budget, language, schedule, and benefit tier, computes net out-of-pocket costs, and returns an affordably ranked shortlist of preschool centers.
 
-### 5. `compare_llm_vs_jev` (alias: `compare_gemini_vs_jev`)
-Runs an A/B evaluation benchmark: feeds candidate options and family constraints to both a Generative LLM (narrative reasoning) and TypeSafe Jev System One (probabilistic decision model) to produce a structured human-evaluation comparison matrix.
+### 5. `compare_heuristic_vs_jev`
+Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
 
 ### 6. `get_elfa_rates_and_rules`
 Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings, and regulatory guidelines.
@@ -58,22 +58,21 @@ Direct integration with the **California Community Care Licensing Division (CCLD
 
 ---
 
-## TypeSafe Jev System One Meta Composite Scoring
+## Eligibility Gates and TypeSafe Jev Scoring
 
-Rather than relying on free-form LLM guesswork, candidate centers are evaluated through a structured, multi-dimensional decision model:
+Hard factual checks stay in application code. Jev supplies model judgments for the structured scoring dimensions:
 
-1. **Hard Requirements (Deterministic Gates)**:
-   - Legally licensed status (`STATUS === 'Licensed'`).
+1. **Verified Requirements (Deterministic Gates)**:
+   - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean.
    - Facility type matching (dedicated commercial center vs in-home).
-   - Age bracket compatibility (must legally accommodate child's age in months).
+   - Exact classroom age compatibility in months. Missing age data is surfaced for review.
+   - Published rate and any required toddler diapering evidence before placement in verified recommendations.
 
 2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
-   - **State Safety & Licensing Record (35%)**: Evaluated against CCLD Type A citations, Type B deficiencies, and substantiated complaints. A single minor resolved technical finding receives a slight ding rather than an outright disqualification, while centers with serious safety hazards are heavily penalized.
-   - **Net Budget Satisfaction (30%)**: Evaluates net out-of-pocket tuition against the family's strict budget ceiling.
-   - **Language Immersion Depth (25%)**: Scores authentic immersion vs bilingual support vs secondary exposure.
-   - **Toddler Development & Diapering (10%)**: Confirms Title 22 Toddler diaper changing facilities and supportive toilet learning (eliminating programs that demand unrealistic potty training for a 2-year-old).
+   - With a location: **Location 25%, Safety 25%, Budget 25%, Immersion 15%, Diapering 10%**.
+   - Without a location: **Safety 35%, Budget 30%, Immersion 25%, Diapering 10%**.
 
-3. **Composite Verdict**: Produces a calibrated recommendation choice (`top_tier`, `strong_alternative`, `caution_flagged`, `unsuitable`) with continuous confidence scoring.
+3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's score answers; the choice is a separate model judgment, not a verdict derived mechanically from that composite.
 
 ---
 
@@ -145,8 +144,8 @@ Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-pas
 ### 3. Income Eligibility Check
 > *"We are a family of 4 living in San Francisco with a gross monthly income of $15,000. Do we qualify for ELFA Free Tuition or the Full Credit? What is our monthly voucher amount for a 2-year-old toddler and a 4-year-old preschooler?"*
 
-### 4. Head-to-Head A/B Evaluation (Generative LLM vs. TypeSafe Jev)
-> *"Run an A/B evaluation comparison between Generative LLMs and TypeSafe Jev System One for top Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
+### 4. Compare the Budget Heuristic with Jev
+> *"Compare the rule-based budget heuristic with TypeSafe Jev for Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
 
 ---
 
@@ -163,10 +162,10 @@ Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-pas
 
 ## Security, SAST & Verification
 
-- **Zero Hardcoded Secrets**: Uses environment variables (`TYPESAFE_API_KEY`, optional `CAREWAIT_API_KEY`).
+- **TypeSafe Credential**: Jev requires `TYPESAFE_API_KEY` in the environment. The CareWait API key is a public client credential used by the provider's browser-facing service.
 - **Dependency Audit**: Verified with `npm audit` (0 vulnerabilities).
 - **Pre-commit Hooks**: Enforces automated secret scanning and unit test validation before any commit.
-- **Deterministic Logic**: All income brackets and voucher calculations are executed in code, preventing LLM hallucination of financial figures.
+- **Deterministic Logic**: Income brackets and credit arithmetic are executed in code; unknown prices and incomplete licensing records remain explicitly unverified.
 
 ---
 

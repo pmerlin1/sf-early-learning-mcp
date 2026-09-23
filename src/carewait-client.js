@@ -213,8 +213,9 @@ export async function getSiteDetails(entityId) {
       const lic = (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers);
       return lic ? await getFacilityDetail(lic) : null;
     })(),
-    diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided') ||
-      (prof.accommodations || []).includes('pottyTrainingProvided') ||
-      (prof.program || []).some(p => Number(p.minAge) < 36)
+    diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided'),
+    diaperingStatus: (prof.accommodations || []).includes('diapersProvided')
+      ? 'confirmed'
+      : 'unknown'
   };
 }

@@ -11,7 +11,9 @@ This skill provides authoritative guidance on San Francisco preschool admissions
 
 ## 1. Hard Rules & Eligibility Architecture
 
-Never estimate or guess income eligibility or subsidy rates in unstructured conversation. Always use the `sf-early-learning` MCP tools (`check_elfa_eligibility`, `get_smart_recommendations`, `search_sf_childcare`, `get_childcare_details`, and `compare_llm_vs_jev`).
+Never estimate or guess income eligibility or subsidy rates in unstructured conversation. Always use the `sf-early-learning` MCP tools (`check_elfa_eligibility`, `get_smart_recommendations`, `search_sf_childcare`, and `get_childcare_details`). Use `compare_heuristic_vs_jev` only when an actual TypeSafe Jev evaluation is requested; it requires `TYPESAFE_API_KEY` and must fail clearly if unavailable.
+
+Treat a provider's published tuition as the gross rate and ELFA as a separate funding credit applied to that rate. ELFA acceptance does not establish tuition or guarantee a funded opening. If CareWait rates are blank or incomplete, do not infer a rate from ELFA, DEC, Head Start, or other funding notes. When public web access is available, check the provider's own current tuition page and cite its URL and access date. Do not rely on search snippets or third-party directories for a verified price. If the provider's page does not state a current price for the relevant age group and schedule, mark the rate as unverified.
 
 ### Age Group Definitions (Strict)
 * **Infants**: 0 to 24 months
@@ -67,11 +69,12 @@ Always cross-reference facilities with the official California Community Care Li
 
 ## 4. Decision Model & Meta Composite Scoring (TypeSafe Jev)
 
-To ensure zero hallucination of budget compliance or program fit:
-* Use `get_smart_recommendations` for deterministic net-cost calculation (`Math.max(0, grossTuition - subsidy)`).
-* Use `compare_llm_vs_jev` to run side-by-side human evaluations between generative narrative reasoning and TypeSafe Jev System One probability distributions.
-* **Meta Composite Scoring Weights**:
-  * State Safety & Licensing Record: **35%**
-  * Net Budget Satisfaction: **30%**
-  * Language Immersion Depth: **25%**
-  * Toddler Developmental Diapering Fit: **10%**
+Use code-enforced gates for current license status, exact classroom age fit, verified price, and required diapering support. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
+
+Use `get_smart_recommendations` to calculate net cost from a published rate and the applicable credit. A Free Tuition estimate of $0 is conditional on confirmed ELFA eligibility and an available funded enrollment slot. Do not claim that Jev eliminates factual uncertainty: its typed scores and choice probabilities are model judgments, not substitutes for official records.
+
+Use `compare_heuristic_vs_jev` for the rule-based budget heuristic versus a live TypeSafe Jev evaluation. If Jev is unavailable, state that the comparison could not be completed; do not manufacture a Jev score or confidence value.
+
+**Composite scoring weights**:
+* With a family location: Location **25%**, Safety **25%**, Budget **25%**, Immersion **15%**, Diapering **10%**.
+* Without a family location: Safety **35%**, Budget **30%**, Immersion **25%**, Diapering **10%**.

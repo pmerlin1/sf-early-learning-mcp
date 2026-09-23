@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { haversineDistanceMiles, evaluateProximity, SF_ZIP_CENTROIDS } from '../src/geo-utils.js';
-import { getRecommendations } from '../src/recommendations.js';
+import { rankCandidates } from '../src/recommendation-utils.js';
 
 test('Geolocation & Proximity Evaluation', async (t) => {
   await t.test('Calculates Haversine distance correctly', () => {
@@ -25,17 +25,12 @@ test('Geolocation & Proximity Evaluation', async (t) => {
     assert.equal(prox.isImmediateNeighborhood, false);
   });
 
-  await t.test('getRecommendations prioritizes close centers when homeZipCode is supplied', async () => {
-    const recs = await getRecommendations({
-      childAgeYears: 2.1,
-      targetBudgetMonthly: 1200,
-      homeZipCode: 94121,
-      maxResults: 5
-    });
-
-    assert.ok(recs.recommendations.length > 0);
-    const top = recs.recommendations[0];
-    assert.ok(top.distanceMiles !== undefined);
-    assert.ok(top.proximityRating !== undefined);
+  await t.test('prioritizes a substantially closer center over a cheaper distant one', () => {
+    const candidates = [
+      { name: 'Distant and cheap', distanceMiles: 6, estimatedNetOutOfPocketMonthly: 100 },
+      { name: 'Nearby and pricier', distanceMiles: 2, estimatedNetOutOfPocketMonthly: 400 }
+    ];
+    const ranked = rankCandidates(candidates, 94121);
+    assert.equal(ranked[0].name, 'Nearby and pricier');
   });
 });
