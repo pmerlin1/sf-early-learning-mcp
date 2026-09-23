@@ -105,6 +105,7 @@ export async function getRecommendations(params = {}) {
       const rates = site.monthlyRates;
       let grossTuition = null;
       let rateType = 'unknown';
+      let rateStatus = 'verified';
 
       if (ageCategory === 'toddler' && rates.toddler && (rates.toddler.max || rates.toddler.min)) {
         grossTuition = rates.toddler.min || rates.toddler.max;
@@ -118,10 +119,21 @@ export async function getRecommendations(params = {}) {
       }
 
       let netMonthly = null;
+      const notesLower = (site.rateNotes || '').toLowerCase();
+      const isExplicitDecCap = notesLower.includes('elfa') || notesLower.includes('dec') || notesLower.includes('head start');
+
       if (activeTier === 'freeTuitionELFA') {
         netMonthly = 0;
       } else if (grossTuition !== null) {
         netMonthly = Math.max(0, grossTuition - subsidyAmount);
+      } else if (isExplicitDecCap) {
+        // e.g. Kai Ming sites explicitly state slots follow published DEC schedule ($1,153)
+        grossTuition = subsidyAmount;
+        netMonthly = 0;
+        rateStatus = 'dec_capped_slot';
+      } else {
+        // Unverified / blank in city database (like New Journey or private providers)
+        rateStatus = 'unverified_blank_rates';
       }
 
       const userLocation = homeZipCode || homeLocation;
@@ -141,6 +153,7 @@ export async function getRecommendations(params = {}) {
         grossMonthlyTuition: grossTuition,
         monthlySubsidyCredit: subsidyAmount,
         estimatedNetOutOfPocketMonthly: netMonthly,
+        rateStatus,
         rateNotes: site.rateNotes,
         schedule: site.schedule,
         description: site.description,
@@ -157,32 +170,32 @@ export async function getRecommendations(params = {}) {
     }
   }
 
-  // 4. Sort candidates:
-  // If location is provided, heavily factor proximity into sorting while staying within budget
+  // 4. Partition candidates into within-budget, stretch options, and unverified rates
   const userLoc = homeZipCode || homeLocation;
-  detailedCandidates.sort((a, b) => {
+  const rankFn = (a, b) => {
     const costA = a.estimatedNetOutOfPocketMonthly !== null ? a.estimatedNetOutOfPocketMonthly : 99999;
     const costB = b.estimatedNetOutOfPocketMonthly !== null ? b.estimatedNetOutOfPocketMonthly : 99999;
-
     if (userLoc) {
-      // Both within budget: prioritize proximity
-      const aInBudget = costA <= targetBudgetMonthly;
-      const bInBudget = costB <= targetBudgetMonthly;
-      if (aInBudget && bInBudget) {
-        const distA = a.distanceMiles !== null ? a.distanceMiles : 99;
-        const distB = b.distanceMiles !== null ? b.distanceMiles : 99;
-        // If distance difference is significant (> 1.5 miles), prefer closer center
-        if (Math.abs(distA - distB) > 1.5) {
-          return distA - distB;
-        }
-        return costA - costB;
+      const distA = a.distanceMiles !== null ? a.distanceMiles : 99;
+      const distB = b.distanceMiles !== null ? b.distanceMiles : 99;
+      if (Math.abs(distA - distB) > 1.5) {
+        return distA - distB;
       }
-      if (aInBudget) return -1;
-      if (bInBudget) return 1;
     }
-
     return costA - costB;
-  });
+  };
+
+  const withinBudget = detailedCandidates
+    .filter(c => c.estimatedNetOutOfPocketMonthly !== null && c.estimatedNetOutOfPocketMonthly <= targetBudgetMonthly)
+    .sort(rankFn);
+
+  const stretchOptions = detailedCandidates
+    .filter(c => c.estimatedNetOutOfPocketMonthly !== null && c.estimatedNetOutOfPocketMonthly > targetBudgetMonthly)
+    .sort((a, b) => (a.estimatedNetOutOfPocketMonthly || 0) - (b.estimatedNetOutOfPocketMonthly || 0));
+
+  const unverified = detailedCandidates
+    .filter(c => c.rateStatus === 'unverified_blank_rates')
+    .sort((a, b) => (a.distanceMiles || 99) - (b.distanceMiles || 99));
 
   return {
     childAgeYears,
@@ -193,6 +206,8 @@ export async function getRecommendations(params = {}) {
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
     totalFound: detailedCandidates.length,
-    recommendations: detailedCandidates.slice(0, maxResults)
+    recommendations: withinBudget.slice(0, maxResults),
+    stretchOptions: stretchOptions.slice(0, 3),
+    unverifiedRateCandidates: unverified.slice(0, 3)
   };
 }
