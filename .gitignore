@@ -7,3 +7,6 @@ yarn-error.log*
 .env.local
 *.log
 context.txt
+opencode.json
+opencode.jsonc
+
