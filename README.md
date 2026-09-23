@@ -45,7 +45,7 @@ Queries the live SF CareWait database with rich filters:
 Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
-All-in-one recommendation engine: takes budget, language, schedule, and benefit tier, computes net out-of-pocket costs, and returns an affordably ranked shortlist of preschool centers.
+All-in-one recommendation engine: takes budget, language, schedule, benefit tier, and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of preschool centers. Missing provider aid data never becomes an assumed credit.
 
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
@@ -66,13 +66,16 @@ Hard factual checks stay in application code. Jev supplies model judgments for t
    - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
-   - Published rate and any required toddler diapering evidence before placement in verified recommendations.
+   - Published rate, provider-confirmed ELFA tier, and required toddler diaper-change evidence before placement in verified recommendations. Potty-training support is tracked separately from diaper changes. A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
+   - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
 
 2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
    - With a location: **Location 25%, Safety 25%, Budget 25%, Immersion 15%, Diapering 10%**.
    - Without a location: **Safety 35%, Budget 30%, Immersion 25%, Diapering 10%**.
 
-3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's score answers; the choice is a separate model judgment, not a verdict derived mechanically from that composite.
+3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's available score answers; if answers are missing, the composite is reweighted over scored dimensions and includes a coverage value and missing-dimension list. The choice is a separate model judgment, not a verdict derived mechanically from that composite.
+
+CareWait's `100` / `25` accommodation evidence values are ordinal signals, not likelihoods: `100` means that specific accommodation is explicitly listed and `25` means it is not confirmed. Diaper changes and potty-training support use separate values; a potty-training flag never confirms diaper changing.
 
 ---
 

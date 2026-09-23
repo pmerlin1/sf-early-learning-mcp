@@ -41,6 +41,7 @@ export async function evaluateCandidatesWithJev(
     targetBudgetMonthly = 1200,
     preferredLanguage = 'Spanish',
     childAgeYears = 2.1,
+    childIsPottyTrained,
     homeZipCode,
     homeLocation
   } = userPreferences;
@@ -87,21 +88,28 @@ export async function evaluateCandidatesWithJev(
     const state = {
       familyProfile: {
         childAgeYears,
+        childIsPottyTrained: childIsPottyTrained ?? null,
         targetBudgetMonthly,
         preferredLanguage,
         homeLocation: userLoc || 'San Francisco',
         wantsLicensedCenter: true,
-        pottyTrained: childAgeYears >= 3
+        pottyTrained: childIsPottyTrained ?? null
       },
       candidate: {
         name: candidate.name,
         languages: candidate.languages || [],
+        ageFitStatus: candidate.ageFitStatus || 'unknown',
+        programs: candidate.programs || [],
         address: candidate.address || '',
         zipCode: candidate.zipCode || '',
         grossMonthlyTuition: candidate.grossMonthlyTuition,
         grossMonthlyTuitionMin: candidate.grossMonthlyTuitionMin,
         grossMonthlyTuitionMax: candidate.grossMonthlyTuitionMax,
         monthlySubsidyCredit: candidate.monthlySubsidyCredit,
+        monthlySubsidyCreditAppliedToRate: candidate.monthlySubsidyCreditAppliedToRate,
+        scheduledMonthlySubsidyCredit: candidate.scheduledMonthlySubsidyCredit,
+        subsidyEligibilityStatus: candidate.subsidyEligibilityStatus,
+        providerFinancialAid: candidate.financialAid || [],
         netMonthlyCost: candidate.estimatedNetOutOfPocketMonthly,
         programType: candidate.programType,
         schedule: candidate.schedule || [],
@@ -110,6 +118,13 @@ export async function evaluateCandidatesWithJev(
         distanceFromHomeMiles: proximity.distanceMiles,
         proximityRating: proximity.proximityRating,
         diaperingAccommodated: hasExplicitDiaperingSupport,
+        diaperingStatus: candidate.diaperingStatus || 'unknown',
+        diaperingFitStatus: candidate.diaperingFitStatus || 'unknown',
+        diaperingEvidenceScore: candidate.diaperingEvidenceScore ?? null,
+        diaperingEvidenceSource: candidate.diaperingEvidenceSource || null,
+        pottyTrainingStatus: candidate.pottyTrainingStatus || 'unknown',
+        pottyTrainingEvidenceScore: candidate.pottyTrainingEvidenceScore ?? null,
+        pottyTrainingEvidenceSource: candidate.pottyTrainingEvidenceSource || null,
         ccldInspection: {
           status: ccld.status,
           verificationStatus: ccld.verificationStatus,
@@ -162,15 +177,18 @@ export async function evaluateCandidatesWithJev(
           'Offers authentic, primary language immersion in the requested language'
         ]
       ),
-      toddlerDiaperingFit: score(
-        'Rate how well this program supports toddler developmental and diapering needs using explicit provider evidence',
-        [
-          'Unsuitable: provider explicitly requires independent potty training for an unpotty-trained toddler',
-          'Not confirmed: diapering support is not explicitly documented',
-          'Accommodated: provider explicitly confirms on-site diapering',
-          'Optimal: dedicated toddler classroom and explicit diapering support'
-        ]
-      ),
+      ...(candidate.diaperingFitStatus === 'not_required' ? {} : {
+        toddlerDiaperingFit: score(
+          'Rate fit for this family’s diapering need from the explicit structured provider evidence. ' +
+            'Do not treat potty-training support or a toddler license as proof of diaper changing.',
+          [
+            'Poor fit: provider explicitly says it will not accept this child’s diapering needs',
+            'Unknown: diaper changes are not documented by the provider',
+            'Partial evidence: potty-training support is documented, but diaper changes are not confirmed',
+            'Confirmed fit: provider explicitly lists diapering accommodation'
+          ]
+        )
+      }),
       recommendation: choice(
         'What is the overall recommendation for this family, considering the candidate facts and preferences?',
         {
@@ -192,9 +210,16 @@ export async function evaluateCandidatesWithJev(
       const immersion = scoreSummary(answers.immersionFit);
       const diapering = scoreSummary(answers.toddlerDiaperingFit);
 
-      const weights = hasUserLoc
+      const allWeights = hasUserLoc
         ? { location: 0.25, safety: 0.25, budget: 0.25, immersion: 0.15, diapering: 0.10 }
         : { safety: 0.35, budget: 0.30, immersion: 0.25, diapering: 0.10 };
+      const applicableWeights = Object.entries(allWeights).filter(([criterion]) =>
+        !(criterion === 'diapering' && candidate.diaperingFitStatus === 'not_required')
+      );
+      const applicableWeightTotal = applicableWeights.reduce((total, [, weight]) => total + weight, 0);
+      const weights = Object.fromEntries(applicableWeights.map(([criterion, weight]) =>
+        [criterion, weight / applicableWeightTotal]
+      ));
       const normalized = {
         location: !location || location.score === null ? null : location.score / 3,
         safety: !safety || safety.score === null ? null : safety.score / 3,
@@ -202,9 +227,18 @@ export async function evaluateCandidatesWithJev(
         immersion: !immersion || immersion.score === null ? null : immersion.score / 3,
         diapering: !diapering || diapering.score === null ? null : diapering.score / 3
       };
-      const composite = Object.entries(weights).reduce(
-        (total, [criterion, weight]) => total + (normalized[criterion] ?? 0) * weight,
-        0
+      const scoredWeights = Object.entries(weights).filter(([criterion]) =>
+        normalized[criterion] !== null
+      );
+      const compositeCoverage = scoredWeights.reduce((total, [, weight]) => total + weight, 0);
+      const composite = compositeCoverage > 0
+        ? scoredWeights.reduce(
+            (total, [criterion, weight]) => total + normalized[criterion] * weight,
+            0
+          ) / compositeCoverage
+        : null;
+      const missingScoreCriteria = Object.keys(weights).filter((criterion) =>
+        normalized[criterion] === null
       );
 
       results.push({
@@ -231,7 +265,9 @@ export async function evaluateCandidatesWithJev(
         recommendationChoice: answers.recommendation?.choice || null,
         probabilities: answers.recommendation?.probabilities || null,
         confidence: finiteNumber(answers.recommendation?.confidence),
-        compositeScore: Number(composite.toFixed(3)),
+        compositeScore: composite === null ? null : Number(composite.toFixed(3)),
+        compositeCoverage: Number(compositeCoverage.toFixed(3)),
+        missingScoreCriteria,
         netCost: candidate.estimatedNetOutOfPocketMonthly ?? null,
         ccldSummary: ccld.safetySummary
       });

@@ -138,3 +138,62 @@ export function estimateOutOfPocket(rate, subsidyAmount, freeTuition = false, ra
         : 'published_rate_minus_applicable_credit')
   };
 }
+
+const ELFA_AID_ALIASES = {
+  freeTuitionELFA: ['freetuitionelfa', 'elfafreetuition', 'cctrstateandelfafree'],
+  fullCreditELFA: ['fullcreditelfa', 'elfafullcredit', 'elfafulltuitioncredit'],
+  halfCreditELFA: ['halfcreditelfa', 'elfahalfcredit', 'elfahalftuitioncredit']
+};
+
+function normalizeAidToken(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Confirm aid eligibility from the provider detail record, not just a search filter.
+ * Empty but explicitly present lists mean the requested tier is not listed; a missing
+ * list is unknown. Generic state-subsidy listings never imply ELFA acceptance.
+ */
+export function getProviderSubsidyEligibility(financialAid, tier, status) {
+  if (tier === 'privatePay') return 'not_applicable';
+  if (!Array.isArray(financialAid)) return 'unknown';
+  if (status === 'unknown' || (financialAid.length === 0 && status !== 'listed')) return 'unknown';
+
+  const aliases = ELFA_AID_ALIASES[tier];
+  if (!aliases) return 'unknown';
+
+  const providerTokens = financialAid.flatMap((item) => {
+    if (item && typeof item === 'object') {
+      return [item.code, item.name].filter((value) => value != null).map(normalizeAidToken);
+    }
+    return item == null ? [] : [normalizeAidToken(item)];
+  });
+
+  return providerTokens.some((token) => aliases.some((alias) =>
+    token === alias || token.startsWith(alias)
+  )) ? 'eligible' : 'not_listed';
+}
+
+/**
+ * Keep the two CareWait accommodation flags separate: potty-training support is not
+ * evidence that a provider changes diapers. Scores are evidence labels, not probabilities.
+ */
+export function getCareSupportEvidence(accommodations = []) {
+  const tokens = new Set((Array.isArray(accommodations) ? accommodations : [])
+    .map((item) => normalizeAidToken(
+      item && typeof item === 'object' ? (item.code ?? item.name) : item
+    )));
+  const diaperingStatus = tokens.has('diapersprovided') ? 'confirmed' : 'unknown';
+  const pottyTrainingStatus = tokens.has('pottytrainingprovided') ? 'confirmed' : 'unknown';
+
+  return {
+    diaperingStatus,
+    pottyTrainingStatus,
+    diaperingEvidenceScore: diaperingStatus === 'confirmed' ? 100 : 25,
+    pottyTrainingEvidenceScore: pottyTrainingStatus === 'confirmed' ? 100 : 25,
+    diaperingEvidenceSource: diaperingStatus === 'confirmed' ? 'CareWait: diapersProvided' : null,
+    pottyTrainingEvidenceSource: pottyTrainingStatus === 'confirmed'
+      ? 'CareWait: pottyTrainingProvided'
+      : null
+  };
+}

@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractLicenseNumber } from '../src/carewait-client.js';
+import { extractLicenseNumber, getSiteDetails } from '../src/carewait-client.js';
 import { summarizeInspectionRecord } from '../src/ccld-utils.js';
 import {
   detectRateBasis,
   estimateOutOfPocket,
+  getCareSupportEvidence,
+  getProviderSubsidyEligibility,
   getPublishedMonthlyRate
 } from '../src/recommendation-utils.js';
 import { getRecommendations } from '../src/recommendations.js';
@@ -33,6 +35,70 @@ test('CareWait license extraction', async (t) => {
     assert.equal(extractLicenseNumber({ license: [{ facilityStatus: 'licensed' }] }), null);
     assert.equal(extractLicenseNumber({ license: '[object Object]' }), null);
     assert.equal(extractLicenseNumber({}), null);
+  });
+});
+
+test('provider subsidy eligibility and care evidence stay explicit', async (t) => {
+  await t.test('matches the selected ELFA tier exactly and never promotes generic subsidies', () => {
+    assert.equal(getProviderSubsidyEligibility(
+      [{ code: 'halfCreditELFA', name: 'ELFA Half Tuition Credit (151-200% AMI)' }],
+      'halfCreditELFA',
+      'listed'
+    ), 'eligible');
+    assert.equal(getProviderSubsidyEligibility(
+      [{ code: 'cctr', name: 'General Child Care and Development' }],
+      'halfCreditELFA',
+      'listed'
+    ), 'not_listed');
+    assert.equal(getProviderSubsidyEligibility(undefined, 'halfCreditELFA', 'unknown'), 'unknown');
+    assert.equal(getProviderSubsidyEligibility([], 'halfCreditELFA', 'listed'), 'not_listed');
+  });
+
+  await t.test('keeps diaper changes and potty-training support on separate evidence scales', () => {
+    const diaperingOnly = getCareSupportEvidence(['diapersProvided']);
+    assert.equal(diaperingOnly.diaperingStatus, 'confirmed');
+    assert.equal(diaperingOnly.diaperingEvidenceScore, 100);
+    assert.equal(diaperingOnly.pottyTrainingStatus, 'unknown');
+    assert.equal(diaperingOnly.pottyTrainingEvidenceScore, 25);
+
+    const pottyTrainingOnly = getCareSupportEvidence(['pottyTrainingProvided']);
+    assert.equal(pottyTrainingOnly.diaperingStatus, 'unknown');
+    assert.equal(pottyTrainingOnly.diaperingEvidenceScore, 25);
+    assert.equal(pottyTrainingOnly.pottyTrainingStatus, 'confirmed');
+    assert.equal(pottyTrainingOnly.pottyTrainingEvidenceScore, 100);
+  });
+
+  await t.test('maps CareWait aid and both accommodation flags from provider details', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          profile: {
+            entityId: 'fixture-carewait-profile',
+            programName: 'Fixture Center',
+            financialAid: ['halfCreditELFA'],
+            accommodations: ['pottyTrainingProvided'],
+            program: [],
+            rates: {}
+          }
+        }
+      })
+    });
+    try {
+      const site = await getSiteDetails('fixture-carewait-profile');
+      assert.equal(site.financialAidStatus, 'listed');
+      assert.deepEqual(site.financialAid, [{
+        code: 'halfCreditELFA',
+        name: 'ELFA Half Tuition Credit (151-200% AMI)'
+      }]);
+      assert.equal(site.diaperingStatus, 'unknown');
+      assert.equal(site.diaperingEvidenceScore, 25);
+      assert.equal(site.pottyTrainingStatus, 'confirmed');
+      assert.equal(site.pottyTrainingEvidenceScore, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -99,6 +165,8 @@ test('provider-published post-credit amounts', async (t) => {
       programsOffered: [{ name: 'Toddler', minAgeMonths: 18, maxAgeMonths: 35 }],
       monthlyRates: { toddler: { min: 0, max: 1153 } },
       rateNotes: kaiMingNote,
+      financialAid: [{ code: 'halfCreditELFA', name: 'ELFA Half Tuition Credit' }],
+      financialAidStatus: 'listed',
       licenseNumber: '384002725',
       ccldInspection: {
         verificationStatus: 'verified',
@@ -121,6 +189,8 @@ test('provider-published post-credit amounts', async (t) => {
     assert.equal(result.stretchOptions.length, 1);
     const option = result.stretchOptions[0];
     assert.equal(option.estimatedNetOutOfPocketMonthly, 1153);
+    assert.equal(option.monthlySubsidyCredit, 1153);
+    assert.equal(option.monthlySubsidyCreditAppliedToRate, 0);
     assert.equal(option.grossMonthlyTuition, null);
     assert.equal(option.rateBasis, 'post_credit');
   });

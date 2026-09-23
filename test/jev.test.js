@@ -26,6 +26,11 @@ const candidate = {
   licenseNumber: 'fixture-license',
   ccldInspection: clearInspection,
   diaperingStatus: 'confirmed',
+  diaperingFitStatus: 'confirmed',
+  diaperingEvidenceScore: 100,
+  diaperingEvidenceSource: 'CareWait: diapersProvided',
+  pottyTrainingStatus: 'unknown',
+  pottyTrainingEvidenceScore: 25,
   proximityLevel: 2,
   distanceMiles: 1.5,
   proximityRating: 'Nearby',
@@ -57,6 +62,7 @@ test('Jev evaluator uses live typed answers and preserves their probabilities', 
   const original = process.env.TYPESAFE_API_KEY;
   process.env.TYPESAFE_API_KEY = 'fixture-key';
   let calls = 0;
+  let observedState;
   try {
     const results = await evaluateCandidatesWithJev(
       [candidate],
@@ -65,8 +71,9 @@ test('Jev evaluator uses live typed answers and preserves their probabilities', 
         clientFactory: (apiKey) => {
           assert.equal(apiKey, 'fixture-key');
           return {
-            systemOne: async ({ questions }) => {
+            systemOne: async ({ state, questions }) => {
               calls += 1;
+              observedState = state;
               assert.equal(questions.safetyScore.type, 'score');
               assert.equal(questions.recommendation.type, 'choice');
               return {
@@ -99,11 +106,92 @@ test('Jev evaluator uses live typed answers and preserves their probabilities', 
     );
 
     assert.equal(calls, 1);
+    assert.equal(observedState.familyProfile.pottyTrained, null);
+    assert.equal(observedState.candidate.diaperingEvidenceScore, 100);
+    assert.equal(observedState.candidate.pottyTrainingEvidenceScore, 25);
+    assert.equal(observedState.candidate.ageFitStatus, 'unknown');
     assert.equal(results[0].source, 'jev_live_api');
     assert.equal(results[0].model, 'fixture-jev-model');
     assert.equal(results[0].confidence, 0.72);
     assert.equal(results[0].scoreDistributions.safety.probabilities[3], 0.75);
     assert.equal(results[0].recommendationChoice, 'top_tier');
+    assert.equal(results[0].compositeCoverage, 1);
+    assert.deepEqual(results[0].missingScoreCriteria, []);
+  } finally {
+    if (original === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = original;
+  }
+});
+
+test('Jev does not turn missing scores into zero-valued composite penalties', async () => {
+  const original = process.env.TYPESAFE_API_KEY;
+  process.env.TYPESAFE_API_KEY = 'fixture-key';
+  try {
+    const results = await evaluateCandidatesWithJev(
+      [candidate],
+      { childAgeYears: 2.1 },
+      {
+        clientFactory: () => ({
+          systemOne: async () => ({
+            model: 'fixture-jev-model',
+            answers: {
+              safetyScore: scoreAnswer(3),
+              budgetFit: scoreAnswer(3),
+              recommendation: {
+                type: 'choice',
+                choice: 'strong_alternative',
+                confidence: 0.7,
+                probabilities: { strong_alternative: 0.7 }
+              }
+            }
+          })
+        })
+      }
+    );
+
+    assert.equal(results[0].compositeScore, 1);
+    assert.equal(results[0].compositeCoverage, 0.65);
+    assert.deepEqual(results[0].missingScoreCriteria, ['immersion', 'diapering']);
+  } finally {
+    if (original === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = original;
+  }
+});
+
+test('Jev excludes diapering from composite when the family says it is not needed', async () => {
+  const original = process.env.TYPESAFE_API_KEY;
+  process.env.TYPESAFE_API_KEY = 'fixture-key';
+  try {
+    const results = await evaluateCandidatesWithJev(
+      [{ ...candidate, diaperingFitStatus: 'not_required' }],
+      { childAgeYears: 2.1, childIsPottyTrained: true },
+      {
+        clientFactory: () => ({
+          systemOne: async ({ state, questions }) => {
+            assert.equal(state.familyProfile.pottyTrained, true);
+            assert.equal(questions.toddlerDiaperingFit, undefined);
+            return {
+              model: 'fixture-jev-model',
+              answers: {
+                safetyScore: scoreAnswer(3),
+                budgetFit: scoreAnswer(3),
+                immersionFit: scoreAnswer(3),
+                recommendation: {
+                  type: 'choice',
+                  choice: 'top_tier',
+                  confidence: 0.8,
+                  probabilities: { top_tier: 0.8 }
+                }
+              }
+            };
+          }
+        })
+      }
+    );
+
+    assert.equal(results[0].compositeScore, 1);
+    assert.equal(results[0].compositeCoverage, 1);
+    assert.deepEqual(results[0].missingScoreCriteria, []);
   } finally {
     if (original === undefined) delete process.env.TYPESAFE_API_KEY;
     else process.env.TYPESAFE_API_KEY = original;

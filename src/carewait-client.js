@@ -8,6 +8,7 @@ import {
   FINANCIAL_ASSISTANCE_MAP
 } from './constants.js';
 import { getFacilityDetail } from './ccld-client.js';
+import { getCareSupportEvidence } from './recommendation-utils.js';
 
 const ALL_SF_ZIPS = [
   94016, 94101, 94106, 94112, 94119, 94121, 94131, 94133, 94135, 94138, 94141, 94143, 94156, 94163, 94175, 94199,
@@ -184,6 +185,7 @@ export async function getSiteDetails(entityId) {
     code,
     name: FINANCIAL_ASSISTANCE_MAP[code] || code
   }));
+  const careSupportEvidence = getCareSupportEvidence(prof.accommodations || []);
 
   // Parse rates
   const rates = prof.rates || {};
@@ -206,6 +208,7 @@ export async function getSiteDetails(entityId) {
     description: prof.programDescription || '',
     languages: languagesTaught,
     financialAid: financialAidList,
+    financialAidStatus: Array.isArray(prof.financialAid) ? 'listed' : 'unknown',
     programsOffered: (prof.program || []).map(p => ({
       name: p.name,
       minAgeMonths: Number(p.minAge),
@@ -238,9 +241,7 @@ export async function getSiteDetails(entityId) {
       const lic = extractLicenseNumber(prof);
       return lic ? await getFacilityDetail(lic) : null;
     })(),
-    diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided'),
-    diaperingStatus: (prof.accommodations || []).includes('diapersProvided')
-      ? 'confirmed'
-      : 'unknown'
+    ...careSupportEvidence,
+    diaperingAccommodated: careSupportEvidence.diaperingStatus === 'confirmed'
   };
 }

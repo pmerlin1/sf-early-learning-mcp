@@ -3,6 +3,7 @@ import { getRecommendations } from './recommendations.js';
 
 export async function runHeuristicVsJevComparison({
   childAgeYears = 2.1,
+  childIsPottyTrained,
   familySize = 3,
   monthlyIncome,
   annualIncome,
@@ -16,6 +17,7 @@ export async function runHeuristicVsJevComparison({
   const userLoc = homeZipCode || homeLocation;
   const recData = await getRecommendations({
     childAgeYears,
+    childIsPottyTrained,
     familySize,
     monthlyIncome,
     annualIncome,
@@ -31,6 +33,7 @@ export async function runHeuristicVsJevComparison({
     targetBudgetMonthly,
     preferredLanguage,
     childAgeYears,
+    childIsPottyTrained,
     homeZipCode: userLoc
   });
 
@@ -98,6 +101,8 @@ export async function runHeuristicVsJevComparison({
             model: jev.model || null,
             decision: jev.recommendationChoice,
             compositeScore: jev.compositeScore,
+            compositeCoverage: jev.compositeCoverage,
+            missingScoreCriteria: jev.missingScoreCriteria || [],
             probabilities: jev.probabilities || null,
             confidence: jev.confidence,
             scoreDistributions: jev.scoreDistributions || null,

@@ -46,7 +46,7 @@ async function runTests() {
   });
   console.log(`Found ${recs.totalFound} matching centers. Top recommendations:`);
   for (const r of recs.recommendations) {
-    console.log(`- ${r.name} | Gross: $${r.grossMonthlyTuition} | Subsidy: -$${r.monthlySubsidyCredit} | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
+    console.log(`- ${r.name} | Gross: $${r.grossMonthlyTuition} | ELFA schedule: $${r.monthlySubsidyCredit} | Deducted from rate: $${r.monthlySubsidyCreditAppliedToRate} | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
   }
 
   console.log('\n--- TEST 5: rule-based heuristic vs live Jev System One ---');
