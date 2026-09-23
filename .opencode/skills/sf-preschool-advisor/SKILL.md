@@ -13,7 +13,9 @@ This skill provides authoritative guidance on San Francisco preschool admissions
 
 Never estimate or guess income eligibility or subsidy rates in unstructured conversation. Always use the `sf-early-learning` MCP tools (`check_elfa_eligibility`, `get_smart_recommendations`, `search_sf_childcare`, and `get_childcare_details`). Use `compare_heuristic_vs_jev` only when an actual TypeSafe Jev evaluation is requested; it requires `TYPESAFE_API_KEY` and must fail clearly if unavailable.
 
-Treat a provider's published tuition as the gross rate and ELFA as a separate funding credit applied to that rate. ELFA acceptance does not establish tuition or guarantee a funded opening. If CareWait rates are blank or incomplete, do not infer a rate from ELFA, DEC, Head Start, or other funding notes. When public web access is available, check the provider's own current tuition page and cite its URL and access date. Do not rely on search snippets or third-party directories for a verified price. If the provider's page does not state a current price for the relevant age group and schedule, mark the rate as unverified.
+Treat a provider's published tuition as the gross rate and ELFA as a separate funding credit applied to that rate. ELFA acceptance does not establish tuition or guarantee a funded opening. If CareWait rates are blank or incomplete, do not infer a rate from ELFA, DEC, Head Start, or other funding notes. When public web access is available, check the provider's own current tuition page and cite its URL and access date. Do not rely on search snippets or third-party directories for a verified price. If the provider's page does not state a current price for the relevant age group and schedule, mark the rate as unverified. Do not fill the gap with "typical" or market price ranges.
+
+Apply an ELFA credit only when the provider's financial-aid list includes the family's tier (`freeTuitionELFA`, `fullCreditELFA`, or `halfCreditELFA`). Head Start, CSPP, and CCTR slots have their own lower income limits; a site that lists only those programs does not accept ELFA, so do not estimate an ELFA copay for it. Some providers publish the amount families pay after the ELFA credit rather than gross tuition; `get_smart_recommendations` reports these as `rateBasis: "post_credit"`, and the credit must not be subtracted again.
 
 ### Age Group Definitions (Strict)
 * **Infants**: 0 to 24 months
@@ -60,10 +62,14 @@ When helping a family, follow this structured intake:
 
 ## 3. State Licensing & Safety Verification (CCLD)
 
-Always cross-reference facilities with the official California Community Care Licensing Division (CCLD) using `get_state_licensing_record`:
-* **Pristine**: 0 citations, 0 complaints ever recorded (e.g. Kai Ming centers, Felton Learning Center).
-* **Minor Technical Findings**: 1–2 isolated routine Type B recordkeeping or facility maintenance citations that are fully resolved (e.g. Chibi Chan Too). These receive a slight ding in Jev scoring but remain top-tier or strong alternatives.
-* **Caution Flagged**: History of Type A citations (immediate health/safety hazards) or substantiated complaint allegations (e.g. Sunshine Preschool). Flag these explicitly for parents before recommending.
+Always cross-reference facilities with the official California Community Care Licensing Division (CCLD) using `get_state_licensing_record`. Citation totals combine inspection, complaint, and other visits. Report the category the tool returns; do not name facilities from memory:
+* **Clear (`pristine`)**: licensed, with no citations or complaint visits in the CCLD public record.
+* **Minor findings**: licensed, no Type A citations and no substantiated allegations, with 1–2 Type B citations or complaint visits.
+* **Notable citations**: more than 2 Type B citations or complaint visits.
+* **Caution**: any Type A citation, any substantiated allegation, or a status other than Licensed. Flag these explicitly for parents before recommending.
+* **Unknown**: missing or incomplete CCLD data. This is never a clean record.
+
+Do not describe citations as routine, minor, or resolved unless the CCLD report text says so; link the facility's CCLD page instead.
 
 ---
 

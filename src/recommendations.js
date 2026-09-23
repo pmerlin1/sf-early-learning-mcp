@@ -5,6 +5,7 @@ import { evaluateProximity } from './geo-utils.js';
 import { isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
   checkClassroomAge,
+  detectRateBasis,
   getPublishedMonthlyRate,
   isRateSafeForBudget,
   estimateOutOfPocket,
@@ -118,14 +119,19 @@ export async function getRecommendations(
       const rate = getPublishedMonthlyRate(site.monthlyRates, ageCategory);
       const hasCompleteRate = isRateSafeForBudget(rate.status);
       const freeTier = activeTier === 'freeTuitionELFA';
-      const grossTuition = rate.conservativeGross;
-      const costEstimate = estimateOutOfPocket(rate, subsidyAmount, freeTier);
+      const rateBasis = detectRateBasis(site.rateNotes);
+      const postCredit = rateBasis === 'post_credit';
+      // Post-credit amounts are not gross tuition, so gross stays unknown for those providers.
+      const grossTuition = postCredit ? null : rate.conservativeGross;
+      const costEstimate = estimateOutOfPocket(rate, subsidyAmount, freeTier, rateBasis);
       const netMonthly = costEstimate.estimate;
       const costEstimateBasis = freeTier
         ? 'ELFA free-tuition copay, conditional on an approved award and available funded slot'
-        : (hasCompleteRate
-          ? 'Published CareWait rate minus the applicable ELFA credit; upper end used for budget fit'
-          : 'Unverified or incomplete published rate');
+        : (!hasCompleteRate
+          ? 'Unverified or incomplete published rate'
+          : (postCredit
+            ? 'Provider publishes the amount families pay after the ELFA credit; upper end used for budget fit, credit not subtracted again'
+            : 'Published CareWait rate minus the applicable ELFA credit; upper end used for budget fit'));
 
       const ccld = site.ccldInspection || null;
       const ccldVerificationStatus = ccld?.verificationStatus || 'unavailable';
@@ -155,8 +161,11 @@ export async function getRecommendations(
         ),
         ageFitStatus: ageFit.status,
         grossMonthlyTuition: grossTuition,
-        grossMonthlyTuitionMin: rate.min,
-        grossMonthlyTuitionMax: rate.max,
+        grossMonthlyTuitionMin: postCredit ? null : rate.min,
+        grossMonthlyTuitionMax: postCredit ? null : rate.max,
+        rateBasis,
+        publishedMonthlyMin: rate.min,
+        publishedMonthlyMax: rate.max,
         monthlySubsidyCredit: subsidyAmount,
         estimatedNetOutOfPocketMonthly: netMonthly,
         estimatedNetOutOfPocketMonthlyMin: costEstimate.min,

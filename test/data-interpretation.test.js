@@ -1,0 +1,127 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { extractLicenseNumber } from '../src/carewait-client.js';
+import { summarizeInspectionRecord } from '../src/ccld-utils.js';
+import {
+  detectRateBasis,
+  estimateOutOfPocket,
+  getPublishedMonthlyRate
+} from '../src/recommendation-utils.js';
+import { getRecommendations } from '../src/recommendations.js';
+
+// Field values below mirror live CareWait and CCLD responses (September 2026).
+
+test('CareWait license extraction', async (t) => {
+  await t.test('reads facilityNumber from the array-of-objects shape CareWait returns', () => {
+    const profile = {
+      license: [{
+        licenseUrl: 'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384002962',
+        facilityStatus: 'licensed',
+        facilityNumber: '384002962',
+        facilityType: 'dayCareCenter'
+      }]
+    };
+    assert.equal(extractLicenseNumber(profile), '384002962');
+  });
+
+  await t.test('accepts plain strings and the licenseNumbers array', () => {
+    assert.equal(extractLicenseNumber({ license: '384001291' }), '384001291');
+    assert.equal(extractLicenseNumber({ licenseNumbers: ['384004863'] }), '384004863');
+  });
+
+  await t.test('never returns an object or a non-numeric value', () => {
+    assert.equal(extractLicenseNumber({ license: [{ facilityStatus: 'licensed' }] }), null);
+    assert.equal(extractLicenseNumber({ license: '[object Object]' }), null);
+    assert.equal(extractLicenseNumber({}), null);
+  });
+});
+
+test('CCLD citation totals', async (t) => {
+  const zeros = {
+    STATUS: 'Licensed',
+    NBRINSPTYPA: '0', NBRCMPLTTYPA: '0', NBROTHERTYPA: '0', TOTTYPEA: '0',
+    NBRINSPTYPB: '0', NBRCMPLTTYPB: '0', NBROTHERTYPB: '0', TOTTYPEB: '0',
+    NBRCMPLTVISITS: '0', TOTCMPVISITS: '0', TOTSUBALG: '0'
+  };
+
+  await t.test('counts a Type A citation from an "other" visit (Kai Ming Geary record)', () => {
+    const result = summarizeInspectionRecord({ ...zeros, NBROTHERTYPA: '1' });
+    assert.equal(result.totalTypeA, 1);
+    assert.equal(result.rating, 'caution');
+  });
+
+  await t.test('counts complaint citations once and includes other-visit citations (Sunshine record)', () => {
+    const result = summarizeInspectionRecord({
+      ...zeros,
+      NBRINSPTYPB: '3', NBRCMPLTTYPB: '2', NBROTHERTYPB: '11', TOTTYPEB: '2',
+      NBRCMPLTVISITS: '10', TOTCMPVISITS: '10', TOTSUBALG: '3'
+    });
+    assert.equal(result.totalTypeB, 16);
+    assert.equal(result.rating, 'caution');
+  });
+
+  await t.test('keeps inspection Type A citations (Chibi Chan Too record)', () => {
+    const result = summarizeInspectionRecord({ ...zeros, NBRINSPTYPA: '2', NBRINSPTYPB: '1' });
+    assert.equal(result.totalTypeA, 2);
+    assert.equal(result.totalTypeB, 1);
+    assert.equal(result.rating, 'caution');
+  });
+});
+
+test('provider-published post-credit amounts', async (t) => {
+  const kaiMingNote = 'Kai Ming ELFA slots follow Department of Early Childhood published fee schedule 2026-2027. ' +
+    'Each year, the amount may be different. The tuition shown above are the amount families will be paying ' +
+    'after any ELFA tuition credit offset. ';
+
+  await t.test('detects notes stating the rate is after the ELFA credit', () => {
+    assert.equal(detectRateBasis(kaiMingNote), 'post_credit');
+    assert.equal(detectRateBasis(''), 'gross');
+    assert.equal(detectRateBasis('Sibling discount is applied to the oldest sibling enrolled in the program.'), 'gross');
+    assert.equal(detectRateBasis('Tuition increases after July; ELFA accepted.'), 'gross');
+  });
+
+  await t.test('does not subtract the credit a second time', () => {
+    const rate = getPublishedMonthlyRate({ toddler: { min: 0, max: 1153 } }, 'toddler');
+    const estimate = estimateOutOfPocket(rate, 1153, false, 'post_credit');
+    assert.equal(estimate.estimate, 1153);
+    assert.equal(estimate.basis, 'provider_published_post_credit_amount');
+  });
+
+  await t.test('a half-credit toddler family is not shown $0 at a post-credit provider', async () => {
+    const site = {
+      entityId: 'fixture-kai-ming',
+      name: 'Fixture Post-Credit Center',
+      zipCode: '94133',
+      location: null,
+      programType: 'licensedCenter',
+      languages: ['Chinese (Cantonese)'],
+      description: '',
+      programsOffered: [{ name: 'Toddler', minAgeMonths: 18, maxAgeMonths: 35 }],
+      monthlyRates: { toddler: { min: 0, max: 1153 } },
+      rateNotes: kaiMingNote,
+      licenseNumber: '384002725',
+      ccldInspection: {
+        verificationStatus: 'verified',
+        inspectionDataStatus: 'complete',
+        status: 'Licensed',
+        totalTypeA: 0, totalTypeB: 0, complaintVisits: 0, substantiatedAllegations: 0,
+        safetySummary: 'fixture'
+      },
+      diaperingStatus: 'confirmed',
+      diaperingAccommodated: true
+    };
+    const result = await getRecommendations(
+      { childAgeYears: 2.1, benefitTier: 'halfCreditELFA', targetBudgetMonthly: 300 },
+      {
+        search: async () => ({ items: [{ entityId: site.entityId }] }),
+        getDetails: async () => site
+      }
+    );
+    assert.equal(result.recommendations.length, 0);
+    assert.equal(result.stretchOptions.length, 1);
+    const option = result.stretchOptions[0];
+    assert.equal(option.estimatedNetOutOfPocketMonthly, 1153);
+    assert.equal(option.grossMonthlyTuition, null);
+    assert.equal(option.rateBasis, 'post_credit');
+  });
+});

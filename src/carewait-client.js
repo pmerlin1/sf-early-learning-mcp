@@ -137,6 +137,31 @@ export async function searchProfiles(options = {}) {
   return { total, items, skip, take };
 }
 
+/**
+ * Extract a California facility license number from a CareWait profile.
+ * CareWait returns `license` as an array of objects
+ * (e.g. [{ facilityNumber: "384002962", facilityStatus: "licensed", ... }]);
+ * older or search-index shapes may provide plain strings or `licenseNumbers`.
+ * Only a digit string is returned, so an object can never be sent to CCLD.
+ */
+export function extractLicenseNumber(profile) {
+  const toList = (value) => (Array.isArray(value) ? value : (value == null ? [] : [value]));
+  const candidates = [
+    ...toList(profile?.license).map((entry) =>
+      entry && typeof entry === 'object'
+        ? (entry.facilityNumber ?? entry.licenseNumber ?? entry.number)
+        : entry
+    ),
+    ...toList(profile?.licenseNumbers)
+  ];
+
+  for (const candidate of candidates) {
+    const value = candidate == null ? '' : String(candidate).trim();
+    if (/^\d{6,12}$/.test(value)) return value;
+  }
+  return null;
+}
+
 export async function getSiteDetails(entityId) {
   const url = `${CAREWAIT_SITE_URL}/${entityId}`;
   const response = await fetch(url, {
@@ -208,9 +233,9 @@ export async function getSiteDetails(entityId) {
     hours: prof.hours || [],
     accommodations: prof.accommodations || [],
     activities: prof.activities || [],
-    licenseNumber: (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers) || null,
+    licenseNumber: extractLicenseNumber(prof),
     ccldInspection: await (async () => {
-      const lic = (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers);
+      const lic = extractLicenseNumber(prof);
       return lic ? await getFacilityDetail(lic) : null;
     })(),
     diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided'),

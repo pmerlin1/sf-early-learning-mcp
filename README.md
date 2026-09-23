@@ -149,14 +149,18 @@ Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-pas
 
 ---
 
-## Example Scenarios & Real Net Costs
+## How Net Cost Is Calculated
 
-| Scenario | Child Age | Voucher Credit | Selected Center | Regular Tuition | Your Net Monthly Cost |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Spanish Immersion (Strict Budget)** | 2.1 yo | $1,153 / mo (Half Credit) | **Chibi Chan Too** (Presidio) | $1,243 / mo | **$90 / mo** |
-| **Spanish Immersion (Mission Center)** | 2.1 yo | $1,153 / mo (Half Credit) | **Mission Kids Co-op** (Mission) | $1,383 / mo | **$230 / mo** |
-| **Chinese Immersion (100% Covered)** | 2.1 yo | $1,153 / mo (Half Credit) | **Kai Ming Rainbow Center** | $1,153 / mo | **$0 / mo** |
-| **Free Tuition Tier (0-110% AMI)** | Any | 100% Free | **Any ELFA Center** | Any | **$0 / mo** *(Co-pays banned)* |
+Examples for a toddler (24–36 months) in the Half Tuition Credit tier ($1,153/month credit):
+
+| What CareWait publishes for the toddler age group | Estimated net monthly cost |
+| :--- | :--- |
+| A gross tuition range of $0–$1,383 | **$230** ($1,383 − $1,153; the upper end of the range is used for budget fit) |
+| An amount the provider's notes say is charged *after* the ELFA credit, e.g. $0–$1,153 | **Up to $1,153** (the credit is not subtracted a second time) |
+| A blank rate, or only a preschool rate | **Unknown**; the rate is unverified until confirmed on the provider's own site or by the provider |
+| Any rate, with the family in the Free Tuition tier (0–110% AMI) | **$0**, conditional on an approved ELFA award and an available funded slot |
+
+The credit applies only at providers whose CareWait financial-aid list includes the family's ELFA tier.
 
 ---
 

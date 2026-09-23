@@ -95,7 +95,19 @@ export function rankCandidates(candidates, homeLocation) {
   });
 }
 
-export function estimateOutOfPocket(rate, subsidyAmount, freeTuition = false) {
+// Matches notes such as Kai Ming's: "The tuition shown above are the amount families
+// will be paying after any ELFA tuition credit offset."
+const POST_CREDIT_NOTE = /\bafter\b[^.]{0,40}\b(credit|subsid(?:y|ies))\b/i;
+
+/**
+ * Some providers publish what a family pays after the ELFA credit instead of gross tuition.
+ * Subtracting the credit from those amounts would count it twice.
+ */
+export function detectRateBasis(rateNotes) {
+  return POST_CREDIT_NOTE.test(String(rateNotes || '')) ? 'post_credit' : 'gross';
+}
+
+export function estimateOutOfPocket(rate, subsidyAmount, freeTuition = false, rateBasis = 'gross') {
   const subsidy = readMoney(subsidyAmount) ?? 0;
   if (freeTuition) {
     return {
@@ -106,19 +118,23 @@ export function estimateOutOfPocket(rate, subsidyAmount, freeTuition = false) {
     };
   }
 
+  const credit = rateBasis === 'post_credit' ? 0 : subsidy;
   const min = rate.lowerBoundGross === null
     ? null
-    : Math.max(0, rate.lowerBoundGross - subsidy);
+    : Math.max(0, rate.lowerBoundGross - credit);
   const max = rate.conservativeGross === null
     ? null
-    : Math.max(0, rate.conservativeGross - subsidy);
+    : Math.max(0, rate.conservativeGross - credit);
+  const safe = isRateSafeForBudget(rate.status);
 
   return {
     min,
     max,
-    estimate: isRateSafeForBudget(rate.status) ? max : null,
-    basis: isRateSafeForBudget(rate.status)
-      ? 'published_rate_minus_applicable_credit'
-      : 'unverified_or_incomplete_rate'
+    estimate: safe ? max : null,
+    basis: !safe
+      ? 'unverified_or_incomplete_rate'
+      : (rateBasis === 'post_credit'
+        ? 'provider_published_post_credit_amount'
+        : 'published_rate_minus_applicable_credit')
   };
 }
