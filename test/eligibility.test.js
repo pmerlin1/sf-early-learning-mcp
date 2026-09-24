@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateEligibility } from '../src/eligibility.js';
-import { ELFA_INCOME_TABLE_FY26_27, ELFA_RATES_FY26_27 } from '../src/constants.js';
+import {
+  ELFA_INCOME_TABLE_FY26_27,
+  ELFA_RATES_FY26_27,
+  LARGEST_ELFA_FAMILY_SIZE
+} from '../src/constants.js';
 
 test('calculateEligibility - Income Tiers and Copay Rules', async (t) => {
   await t.test('Tier 1: Free Tuition (0-110% AMI) has zero copay', () => {
@@ -39,6 +43,34 @@ test('calculateEligibility - Income Tiers and Copay Rules', async (t) => {
     const result = calculateEligibility({ familySize: 3, monthlyIncome: 7500, childAgeYears: 2.1 });
     assert.equal(result.tier, 'cctrStateAndElfaFree');
     assert.equal(result.copayAllowed, false);
+  });
+});
+
+test('calculateEligibility - household sizes on DEC\'s income sheet', async (t) => {
+  await t.test('a family of 10 is checked against its own ceilings, not the 8-person ones', () => {
+    // DEC FY 2026-27 Free Tuition ceilings: $263,900/yr for 10 people, $235,350/yr for 8.
+    const result = calculateEligibility({ familySize: 10, annualIncome: 250000, childAgeYears: 2.1 });
+    assert.equal(result.tier, 'elfaFreeTuition');
+    assert.equal(result.familySize, 10);
+    assert.equal(result.thresholdFamilySize, 10);
+    assert.equal(result.thresholds.freeTuitionMonthlyCeiling, 21992);
+    assert.equal(result.familySizeNote, undefined);
+  });
+
+  await t.test('uses the state CCTR ceiling published for larger families', () => {
+    // DEC FY 2026-27: the 12-person CCTR ceiling is $14,455/month.
+    assert.equal(calculateEligibility({ familySize: 12, monthlyIncome: 14400 }).tier, 'cctrStateAndElfaFree');
+    assert.equal(calculateEligibility({ familySize: 12, monthlyIncome: 14500 }).tier, 'elfaFreeTuition');
+  });
+
+  await t.test('flags a family larger than DEC publishes instead of silently shrinking it', () => {
+    assert.equal(LARGEST_ELFA_FAMILY_SIZE, 12);
+    const result = calculateEligibility({ familySize: 14, annualIncome: 300000 });
+    assert.equal(result.familySize, 14);
+    assert.equal(result.thresholdFamilySize, 12);
+    assert.equal(result.thresholds.freeTuitionMonthlyCeiling, ELFA_INCOME_TABLE_FY26_27[12].freeMonthly);
+    assert.match(result.familySizeNote, /up to 12 people/);
+    assert.match(result.familySizeNote, /family of 14/);
   });
 });
 

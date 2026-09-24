@@ -1,4 +1,8 @@
-import { ELFA_INCOME_TABLE_FY26_27 } from './constants.js';
+import {
+  ELFA_FAMILY_SIZES,
+  ELFA_INCOME_TABLE_FY26_27,
+  LARGEST_ELFA_FAMILY_SIZE
+} from './constants.js';
 
 /**
  * Canonical family intake, rendered into the MCP `family_intake_interview` prompt.
@@ -163,7 +167,7 @@ const usd = (amount) => '$' + String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',
  * annual ceilings. Each option's value is the benefitTier it corresponds to.
  */
 export function buildIncomeOptions(familySize) {
-  const size = Math.max(1, Math.min(8, Math.round(Number(familySize) || 0)));
+  const size = Math.max(1, Math.min(LARGEST_ELFA_FAMILY_SIZE, Math.round(Number(familySize) || 0)));
   const row = ELFA_INCOME_TABLE_FY26_27[size];
   return [
     { label: 'Up to ' + usd(row.freeAnnual), description: 'ELFA Free Tuition', value: 'freeTuitionELFA' },
@@ -199,7 +203,7 @@ function renderQuestion(question, number) {
 
 function renderIncomeCeilings() {
   const lines = [];
-  for (let size = 1; size <= 8; size += 1) {
+  for (const size of ELFA_FAMILY_SIZES) {
     const ranges = buildIncomeOptions(size)
       .map((option) => option.description + ' ' + option.label.replace(/^Up to /, 'up to ').replace(/^Over /, 'over '))
       .join('; ');
@@ -244,6 +248,9 @@ export function buildFamilyIntakePrompt() {
     'Range answers map to benefitTier: ' + buildIncomeOptions(3)
       .map((option) => option.description + ' → "' + option.value + '"')
       .join('; ') + '.',
+    'DEC publishes ceilings for families of up to ' + LARGEST_ELFA_FAMILY_SIZE + ' people; for a ' +
+      'larger family, check_elfa_eligibility uses the ' + LARGEST_ELFA_FAMILY_SIZE + '-person ceilings ' +
+      'and returns a familySizeNote to pass on.',
     '',
     'Then call get_smart_recommendations with every mapped answer, including childIsPottyTrained ' +
       'and programType, and verify licensing with the CCLD fields it returns.'

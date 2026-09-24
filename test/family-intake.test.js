@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateEligibility } from '../src/eligibility.js';
 import {
+  ELFA_FAMILY_SIZES,
   ELFA_INCOME_TABLE_FY26_27,
   RECOMMENDATION_PROGRAM_TYPES,
   SCHEDULE_TYPES
@@ -81,7 +82,9 @@ test('family intake answers map to tool parameters', async (t) => {
   });
 
   await t.test('income ranges use the published ceilings and agree with the eligibility tiers', () => {
-    for (let size = 1; size <= 8; size += 1) {
+    assert.deepEqual(ELFA_FAMILY_SIZES, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    assert.deepEqual(buildIncomeOptions(15), buildIncomeOptions(12));
+    for (const size of ELFA_FAMILY_SIZES) {
       const row = ELFA_INCOME_TABLE_FY26_27[size];
       const options = buildIncomeOptions(size);
       const tierAt = (annualIncome) => calculateEligibility({ familySize: size, annualIncome }).tier;
@@ -127,7 +130,10 @@ test('family intake MCP prompt', async (t) => {
   await t.test('lists dollar income ranges by household size and their benefit tiers', () => {
     assert.ok(prompt.includes('- 1–2 people: ELFA Free Tuition up to $142,650;'));
     assert.ok(prompt.includes('- 3 people: ELFA Free Tuition up to $160,500;'));
+    assert.ok(prompt.includes('- 10 people: ELFA Free Tuition up to $263,900;'));
+    assert.ok(prompt.includes('- 11–12 people: ELFA Free Tuition up to $278,200;'));
     assert.ok(prompt.includes('ELFA Half Tuition Credit → "halfCreditELFA"'));
+    assert.match(prompt, /families of up to 12 people/);
   });
 
   await t.test('prompt listing names both rounds', () => {

@@ -21,9 +21,14 @@ export const ELFA_RATES_FY26_27 = {
   }
 };
 
-// Income Eligibility Ceilings (HUD AMI / California SMI published May/June 2026)
+// Gross income ceilings by family size, from DEC's "FY 2026-2027 San Francisco Family Income
+// Eligibility" sheet:
+//   cctrMonthly: State CCTR (85% SMI)   csppMonthly: State CSPP (100% SMI)
+//   free*: ELFA Free Tuition (110% AMI)   full*: ELFA Full Tuition Credit (150% AMI)
+//   half*: ELFA Half Tuition Credit (200% AMI)
+// DEC combines 1- and 2-person families into one row using the 2-person figures, and its
+// 12-person ELFA figures repeat the 11-person figures.
 export const ELFA_INCOME_TABLE_FY26_27 = {
-  // Family Size -> { cctr85SmiMonthly, cctr85SmiAnnual, cspp100SmiMonthly, cspp100SmiAnnual, free110AmiMonthly, free110AmiAnnual, full150AmiMonthly, full150AmiAnnual, half200AmiMonthly, half200AmiAnnual }
   1: { freeMonthly: 11888, freeAnnual: 142650, fullMonthly: 16213, fullAnnual: 194550, halfMonthly: 21617, halfAnnual: 259400, cctrMonthly: 7119, csppMonthly: 8376 },
   2: { freeMonthly: 11888, freeAnnual: 142650, fullMonthly: 16213, fullAnnual: 194550, halfMonthly: 21617, halfAnnual: 259400, cctrMonthly: 7119, csppMonthly: 8376 },
   3: { freeMonthly: 13375, freeAnnual: 160500, fullMonthly: 18238, fullAnnual: 218850, halfMonthly: 24317, halfAnnual: 291800, cctrMonthly: 8054, csppMonthly: 9476 },
@@ -31,8 +36,17 @@ export const ELFA_INCOME_TABLE_FY26_27 = {
   5: { freeMonthly: 16046, freeAnnual: 192550, fullMonthly: 21884, fullAnnual: 262600, halfMonthly: 29175, halfAnnual: 350100, cctrMonthly: 11178, csppMonthly: 13151 },
   6: { freeMonthly: 17238, freeAnnual: 206850, fullMonthly: 23509, fullAnnual: 282100, halfMonthly: 31342, halfAnnual: 376100, cctrMonthly: 12720, csppMonthly: 14965 },
   7: { freeMonthly: 18425, freeAnnual: 221100, fullMonthly: 25125, fullAnnual: 301500, halfMonthly: 33500, halfAnnual: 402000, cctrMonthly: 13009, csppMonthly: 15305 },
-  8: { freeMonthly: 19613, freeAnnual: 235350, fullMonthly: 26746, fullAnnual: 320950, halfMonthly: 35659, halfAnnual: 427900, cctrMonthly: 13298, csppMonthly: 15645 }
+  8: { freeMonthly: 19613, freeAnnual: 235350, fullMonthly: 26746, fullAnnual: 320950, halfMonthly: 35659, halfAnnual: 427900, cctrMonthly: 13298, csppMonthly: 15645 },
+  9: { freeMonthly: 20805, freeAnnual: 249650, fullMonthly: 28371, fullAnnual: 340450, halfMonthly: 37825, halfAnnual: 453900, cctrMonthly: 13587, csppMonthly: 15985 },
+  10: { freeMonthly: 21992, freeAnnual: 263900, fullMonthly: 29988, fullAnnual: 359850, halfMonthly: 39984, halfAnnual: 479800, cctrMonthly: 13876, csppMonthly: 16325 },
+  11: { freeMonthly: 23184, freeAnnual: 278200, fullMonthly: 31613, fullAnnual: 379350, halfMonthly: 42150, halfAnnual: 505800, cctrMonthly: 14166, csppMonthly: 16665 },
+  12: { freeMonthly: 23184, freeAnnual: 278200, fullMonthly: 31613, fullAnnual: 379350, halfMonthly: 42150, halfAnnual: 505800, cctrMonthly: 14455, csppMonthly: 17006 }
 };
+
+export const ELFA_FAMILY_SIZES = Object.keys(ELFA_INCOME_TABLE_FY26_27)
+  .map(Number)
+  .sort((a, b) => a - b);
+export const LARGEST_ELFA_FAMILY_SIZE = ELFA_FAMILY_SIZES[ELFA_FAMILY_SIZES.length - 1];
 
 export const LANGUAGE_MAP = {
   '00': 'English',

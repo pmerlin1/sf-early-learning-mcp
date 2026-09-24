@@ -1,11 +1,18 @@
-import { ELFA_INCOME_TABLE_FY26_27, ELFA_RATES_FY26_27 } from './constants.js';
+import {
+  ELFA_INCOME_TABLE_FY26_27,
+  ELFA_RATES_FY26_27,
+  LARGEST_ELFA_FAMILY_SIZE
+} from './constants.js';
 
 export function calculateEligibility({ familySize, monthlyIncome, annualIncome, childAgeYears }) {
-  const size = Math.max(1, Math.min(8, Math.round(Number(familySize) || 3)));
+  const householdSize = Math.max(1, Math.round(Number(familySize) || 3));
+  // DEC publishes ceilings only up to LARGEST_ELFA_FAMILY_SIZE. A larger household is checked
+  // against that row and flagged, because its actual ceilings would be higher.
+  const size = Math.min(LARGEST_ELFA_FAMILY_SIZE, householdSize);
   const monthly = monthlyIncome !== undefined ? Number(monthlyIncome) : (Number(annualIncome) / 12);
   const annual = annualIncome !== undefined ? Number(annualIncome) : (Number(monthlyIncome) * 12);
 
-  const table = ELFA_INCOME_TABLE_FY26_27[size] || ELFA_INCOME_TABLE_FY26_27[8];
+  const table = ELFA_INCOME_TABLE_FY26_27[size];
 
   let tier = 'privatePay';
   let tierName = 'Private Pay (Over 200% AMI)';
@@ -71,7 +78,13 @@ export function calculateEligibility({ familySize, monthlyIncome, annualIncome, 
   }
 
   return {
-    familySize: size,
+    familySize: householdSize,
+    thresholdFamilySize: size,
+    ...(householdSize > size ? {
+      familySizeNote: 'DEC publishes income ceilings for families of up to ' + size + ' people. ' +
+        'This family of ' + householdSize + ' was checked against the ' + size + '-person ceilings, ' +
+        'which can understate its eligibility; confirm the tier with DEC or a resource and referral agency.'
+    } : {}),
     monthlyIncome: monthly,
     annualIncome: annual,
     childAgeYears: childAgeYears !== undefined ? Number(childAgeYears) : null,
