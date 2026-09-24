@@ -45,7 +45,7 @@ Queries the live SF CareWait database with rich filters:
 Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
-All-in-one recommendation engine: takes budget, language, schedule, and benefit tier, computes net out-of-pocket costs, and returns an affordably ranked shortlist of preschool centers.
+All-in-one recommendation engine: takes budget, language, schedule, benefit tier, and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of preschool centers. Missing provider aid data never becomes an assumed credit.
 
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
@@ -63,16 +63,19 @@ Direct integration with the **California Community Care Licensing Division (CCLD
 Hard factual checks stay in application code. Jev supplies model judgments for the structured scoring dimensions:
 
 1. **Verified Requirements (Deterministic Gates)**:
-   - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean.
+   - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean. Providers with several licenses (e.g. separate infant and preschool licenses) are checked on every license, and the most severe finding is reported.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
-   - Published rate and any required toddler diapering evidence before placement in verified recommendations.
+   - Published rate, provider-confirmed ELFA tier, and required toddler diaper-change evidence before placement in verified recommendations. Potty-training support is tracked separately from diaper changes. A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
+   - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
 
 2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
    - With a location: **Location 25%, Safety 25%, Budget 25%, Immersion 15%, Diapering 10%**.
    - Without a location: **Safety 35%, Budget 30%, Immersion 25%, Diapering 10%**.
 
-3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's score answers; the choice is a separate model judgment, not a verdict derived mechanically from that composite.
+3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's available score answers; if answers are missing, the composite is reweighted over scored dimensions and includes a coverage value and missing-dimension list. The choice is a separate model judgment, not a verdict derived mechanically from that composite.
+
+CareWait's `100` / `25` accommodation evidence values are ordinal signals, not likelihoods: `100` means that specific accommodation is explicitly listed and `25` means it is not confirmed. Diaper changes and potty-training support use separate values; a potty-training flag never confirms diaper changing.
 
 ---
 
@@ -149,14 +152,18 @@ Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-pas
 
 ---
 
-## Example Scenarios & Real Net Costs
+## How Net Cost Is Calculated
 
-| Scenario | Child Age | Voucher Credit | Selected Center | Regular Tuition | Your Net Monthly Cost |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Spanish Immersion (Strict Budget)** | 2.1 yo | $1,153 / mo (Half Credit) | **Chibi Chan Too** (Presidio) | $1,243 / mo | **$90 / mo** |
-| **Spanish Immersion (Mission Center)** | 2.1 yo | $1,153 / mo (Half Credit) | **Mission Kids Co-op** (Mission) | $1,383 / mo | **$230 / mo** |
-| **Chinese Immersion (100% Covered)** | 2.1 yo | $1,153 / mo (Half Credit) | **Kai Ming Rainbow Center** | $1,153 / mo | **$0 / mo** |
-| **Free Tuition Tier (0-110% AMI)** | Any | 100% Free | **Any ELFA Center** | Any | **$0 / mo** *(Co-pays banned)* |
+Examples for a toddler (24–36 months) in the Half Tuition Credit tier ($1,153/month credit):
+
+| What CareWait publishes for the toddler age group | Estimated net monthly cost |
+| :--- | :--- |
+| A gross tuition range of $0–$1,383 | **$230** ($1,383 − $1,153; the upper end of the range is used for budget fit) |
+| An amount the provider's notes say is charged *after* the ELFA credit, e.g. $0–$1,153 | **Up to $1,153** (the credit is not subtracted a second time) |
+| A blank rate, or only a preschool rate | **Unknown**; the rate is unverified until confirmed on the provider's own site or by the provider |
+| Any rate, with the family in the Free Tuition tier (0–110% AMI) | **$0**, conditional on an approved ELFA award and an available funded slot |
+
+The credit applies only at providers whose CareWait financial-aid list includes the family's ELFA tier.
 
 ---
 

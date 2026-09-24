@@ -8,6 +8,8 @@ import {
   FINANCIAL_ASSISTANCE_MAP
 } from './constants.js';
 import { getFacilityDetail } from './ccld-client.js';
+import { combineInspectionRecords } from './ccld-utils.js';
+import { getCareSupportEvidence } from './recommendation-utils.js';
 
 const ALL_SF_ZIPS = [
   94016, 94101, 94106, 94112, 94119, 94121, 94131, 94133, 94135, 94138, 94141, 94143, 94156, 94163, 94175, 94199,
@@ -137,6 +139,37 @@ export async function searchProfiles(options = {}) {
   return { total, items, skip, take };
 }
 
+/**
+ * Extract every California facility license number from a CareWait profile.
+ * CareWait returns `license` as an array of objects
+ * (e.g. [{ facilityNumber: "384002962", facilityStatus: "licensed", ... }]), and
+ * providers with separate infant and preschool licenses list one entry per license.
+ * Older or search-index shapes may provide plain strings or `licenseNumbers`.
+ * Only digit strings are returned, so an object can never be sent to CCLD.
+ */
+export function extractLicenseNumbers(profile) {
+  const toList = (value) => (Array.isArray(value) ? value : (value == null ? [] : [value]));
+  const candidates = [
+    ...toList(profile?.license).map((entry) =>
+      entry && typeof entry === 'object'
+        ? (entry.facilityNumber ?? entry.licenseNumber ?? entry.number)
+        : entry
+    ),
+    ...toList(profile?.licenseNumbers)
+  ];
+
+  const numbers = [];
+  for (const candidate of candidates) {
+    const value = candidate == null ? '' : String(candidate).trim();
+    if (/^\d{6,12}$/.test(value) && !numbers.includes(value)) numbers.push(value);
+  }
+  return numbers;
+}
+
+export function extractLicenseNumber(profile) {
+  return extractLicenseNumbers(profile)[0] || null;
+}
+
 export async function getSiteDetails(entityId) {
   const url = `${CAREWAIT_SITE_URL}/${entityId}`;
   const response = await fetch(url, {
@@ -159,6 +192,11 @@ export async function getSiteDetails(entityId) {
     code,
     name: FINANCIAL_ASSISTANCE_MAP[code] || code
   }));
+  const careSupportEvidence = getCareSupportEvidence(prof.accommodations || []);
+  const licenseNumbers = extractLicenseNumbers(prof);
+  const ccldInspections = (await Promise.all(
+    licenseNumbers.map((licenseNumber) => getFacilityDetail(licenseNumber))
+  )).filter(Boolean);
 
   // Parse rates
   const rates = prof.rates || {};
@@ -181,6 +219,7 @@ export async function getSiteDetails(entityId) {
     description: prof.programDescription || '',
     languages: languagesTaught,
     financialAid: financialAidList,
+    financialAidStatus: Array.isArray(prof.financialAid) ? 'listed' : 'unknown',
     programsOffered: (prof.program || []).map(p => ({
       name: p.name,
       minAgeMonths: Number(p.minAge),
@@ -208,14 +247,11 @@ export async function getSiteDetails(entityId) {
     hours: prof.hours || [],
     accommodations: prof.accommodations || [],
     activities: prof.activities || [],
-    licenseNumber: (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers) || null,
-    ccldInspection: await (async () => {
-      const lic = (Array.isArray(prof.license) ? prof.license[0] : prof.license) || (Array.isArray(prof.licenseNumbers) ? prof.licenseNumbers[0] : prof.licenseNumbers);
-      return lic ? await getFacilityDetail(lic) : null;
-    })(),
-    diaperingAccommodated: (prof.accommodations || []).includes('diapersProvided'),
-    diaperingStatus: (prof.accommodations || []).includes('diapersProvided')
-      ? 'confirmed'
-      : 'unknown'
+    licenseNumber: licenseNumbers[0] || null,
+    licenseNumbers,
+    ccldInspection: combineInspectionRecords(ccldInspections),
+    ccldInspections,
+    ...careSupportEvidence,
+    diaperingAccommodated: careSupportEvidence.diaperingStatus === 'confirmed'
   };
 }

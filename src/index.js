@@ -133,13 +133,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_smart_recommendations',
         description:
-          'Intelligent recommendation engine: combines child age, family size, income/known benefit tier, max out-of-pocket budget, language immersion preferences, and facility type to calculate net out-of-pocket costs and produce a tailored shortlist of preschool centers.',
+          'Recommendation engine: combines child age and toilet-training status, family size, income/known benefit tier, max out-of-pocket budget, language immersion preferences, and facility type. Applies ELFA credits only when the provider detail record lists the selected tier; unknown provider eligibility never becomes an assumed credit.',
         inputSchema: {
           type: 'object',
           properties: {
             childAgeYears: {
               type: 'number',
               description: 'Age of the child in years (e.g., 2.1)'
+            },
+            childIsPottyTrained: {
+              type: 'boolean',
+              description: 'Optional. Whether this child is independently potty trained; omit if unknown. If false (toddler or preschool age), or omitted for a toddler, diaper-change support must be explicitly documented to qualify as verified.'
             },
             familySize: {
               type: 'number',
@@ -207,6 +211,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             childAgeYears: {
               type: 'number',
               description: 'Age of the child in years (default 2.1)'
+            },
+            childIsPottyTrained: {
+              type: 'boolean',
+              description: 'Optional. Whether this child is independently potty trained; omit if unknown'
             },
             familySize: {
               type: 'number',

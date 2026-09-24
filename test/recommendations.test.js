@@ -26,6 +26,12 @@ const provider = {
   location: { lat: 37.7777, lon: -122.4847 },
   programType: 'licensedCenter',
   languages: ['Spanish'],
+  financialAid: [
+    { code: 'freeTuitionELFA', name: 'ELFA Free Tuition (0-110% AMI)' },
+    { code: 'fullCreditELFA', name: 'ELFA Full Tuition Credit (111-150% AMI)' },
+    { code: 'halfCreditELFA', name: 'ELFA Half Tuition Credit (151-200% AMI)' }
+  ],
+  financialAidStatus: 'listed',
   description: 'Spanish immersion',
   programsOffered: [{ name: 'Toddler', minAgeMonths: 18, maxAgeMonths: 36 }],
   monthlyRates: { toddler: { min: 1383, max: 1500 } },
@@ -131,6 +137,120 @@ test('recommendation output quarantines unverified facts', async (t) => {
     const result = await recommendForProvider({}, { benefitTier: undefined });
     assert.equal(result.subsidyBenefitTier, 'privatePay');
     assert.equal(result.monthlySubsidyDiscount, 0);
+  });
+
+  await t.test('does not apply an ELFA credit when provider details do not list the tier', async () => {
+    const result = await recommendForProvider({
+      financialAid: [{ code: 'cctr', name: 'General Child Care and Development' }]
+    }, { targetBudgetMonthly: 1600 });
+    const option = result.recommendations[0];
+    assert.equal(option.subsidyEligibilityStatus, 'not_listed');
+    assert.equal(option.monthlySubsidyCredit, 0);
+    assert.equal(option.scheduledMonthlySubsidyCredit, 1153);
+    assert.equal(option.estimatedNetOutOfPocketMonthly, 1500);
+    assert.match(option.costEstimateBasis, /does not list the selected ELFA tier/);
+  });
+
+  await t.test('does not present a free-tier copay when the provider does not list free ELFA', async () => {
+    const result = await recommendForProvider({
+      financialAid: [{ code: 'cctr', name: 'General Child Care and Development' }]
+    }, {
+      benefitTier: 'freeTuitionELFA',
+      targetBudgetMonthly: 1600
+    });
+    const option = result.recommendations[0];
+    assert.equal(option.subsidyEligibilityStatus, 'not_listed');
+    assert.equal(option.estimatedNetOutOfPocketMonthly, 1500);
+    assert.equal(option.monthlySubsidyCredit, 0);
+  });
+
+  await t.test('missing provider aid data remains unknown and no credit is assumed', async () => {
+    const result = await recommendForProvider({
+      financialAid: undefined,
+      financialAidStatus: 'unknown'
+    }, { targetBudgetMonthly: 1600 });
+    const option = result.recommendations[0];
+    assert.equal(option.subsidyEligibilityStatus, 'unknown');
+    assert.equal(option.monthlySubsidyCredit, 0);
+    assert.equal(option.estimatedNetOutOfPocketMonthly, 1500);
+  });
+
+  await t.test('does not estimate post-credit rates when provider aid conflicts with the requested tier', async () => {
+    const result = await recommendForProvider({
+      financialAid: [{ code: 'cctr', name: 'General Child Care and Development' }],
+      rateNotes: 'Tuition is the amount after any ELFA tuition credit offset.',
+      monthlyRates: { toddler: { min: 0, max: 1153 } }
+    });
+    assert.equal(result.recommendations.length, 0);
+    assert.equal(result.unverifiedRateCandidates[0].rateStatus, 'conflicting_rate_and_aid_data');
+    assert.equal(result.unverifiedRateCandidates[0].estimatedNetOutOfPocketMonthly, null);
+  });
+
+  await t.test('reports a missing private-pay rate, not an ELFA conflict, at post-credit providers', async () => {
+    const result = await recommendForProvider({
+      rateNotes: 'Tuition is the amount after any ELFA tuition credit offset.',
+      monthlyRates: { toddler: { min: 0, max: 1153 } }
+    }, { benefitTier: 'privatePay' });
+    const option = result.unverifiedRateCandidates[0];
+    assert.equal(result.recommendations.length, 0);
+    assert.equal(option.rateStatus, 'unverified_private_pay_rate');
+    assert.equal(option.estimatedNetOutOfPocketMonthly, null);
+    assert.match(option.costEstimateBasis, /private-pay tuition is not published/);
+    assert.doesNotMatch(option.costEstimateBasis, /selected ELFA tier/);
+  });
+
+  await t.test('requires diaper evidence only when the child needs diaper changes', async () => {
+    const site = {
+      diaperingStatus: 'unknown',
+      diaperingAccommodated: false,
+      pottyTrainingStatus: 'confirmed',
+      pottyTrainingEvidenceScore: 100,
+      pottyTrainingEvidenceSource: 'CareWait: pottyTrainingProvided'
+    };
+    const needsDiapers = await recommendForProvider(site);
+    assert.equal(needsDiapers.recommendations.length, 0);
+    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].diaperingFitStatus,
+      'potty_training_only_diapering_unconfirmed');
+    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].pottyTrainingStatus, 'confirmed');
+
+    const toiletTrained = await recommendForProvider(site, { childIsPottyTrained: true });
+    assert.equal(toiletTrained.recommendations.length, 1);
+    assert.equal(toiletTrained.recommendations[0].diaperingFitStatus, 'not_required');
+  });
+
+  await t.test('requires diaper evidence for a preschool-age child who is not potty trained', async () => {
+    const preschoolSite = {
+      programsOffered: [{ name: 'Preschool', minAgeMonths: 36, maxAgeMonths: 60 }],
+      monthlyRates: { preschool: { min: 1383, max: 1383 } },
+      diaperingStatus: 'unknown',
+      diaperingAccommodated: false
+    };
+    const preschooler = { childAgeYears: 3.5, targetBudgetMonthly: 1000 };
+
+    const notTrained = await recommendForProvider(preschoolSite, {
+      ...preschooler,
+      childIsPottyTrained: false
+    });
+    assert.equal(notTrained.ageCategory, 'preschool');
+    assert.equal(notTrained.recommendations.length, 0);
+    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingFitStatus, 'unknown');
+    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingEvidenceScore, 25);
+
+    const trained = await recommendForProvider(preschoolSite, {
+      ...preschooler,
+      childIsPottyTrained: true
+    });
+    assert.equal(trained.recommendations.length, 1);
+    assert.equal(trained.recommendations[0].diaperingFitStatus, 'not_required');
+    assert.equal(trained.recommendations[0].diaperingEvidenceScore, null);
+
+    const confirmedDiapering = await recommendForProvider({
+      ...preschoolSite,
+      diaperingStatus: 'confirmed',
+      diaperingAccommodated: true
+    }, { ...preschooler, childIsPottyTrained: false });
+    assert.equal(confirmedDiapering.recommendations.length, 1);
+    assert.equal(confirmedDiapering.recommendations[0].diaperingFitStatus, 'confirmed');
   });
 
   await t.test('uses the conservative posted rate and requires a complete CCLD record', async () => {

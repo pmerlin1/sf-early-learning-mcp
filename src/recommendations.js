@@ -5,6 +5,9 @@ import { evaluateProximity } from './geo-utils.js';
 import { isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
   checkClassroomAge,
+  detectRateBasis,
+  getCareSupportEvidence,
+  getProviderSubsidyEligibility,
   getPublishedMonthlyRate,
   isRateSafeForBudget,
   estimateOutOfPocket,
@@ -38,6 +41,7 @@ export async function getRecommendations(
 ) {
   const {
     childAgeYears = 2.1,
+    childIsPottyTrained,
     familySize = 3,
     monthlyIncome,
     annualIncome,
@@ -116,27 +120,85 @@ export async function getRecommendations(
       }
 
       const rate = getPublishedMonthlyRate(site.monthlyRates, ageCategory);
-      const hasCompleteRate = isRateSafeForBudget(rate.status);
-      const freeTier = activeTier === 'freeTuitionELFA';
-      const grossTuition = rate.conservativeGross;
-      const costEstimate = estimateOutOfPocket(rate, subsidyAmount, freeTier);
+      const rateBasis = detectRateBasis(site.rateNotes);
+      const postCredit = rateBasis === 'post_credit';
+      const subsidyEligibilityStatus = getProviderSubsidyEligibility(
+        site.financialAid,
+        activeTier,
+        site.financialAidStatus
+      );
+      const subsidyEligible = subsidyEligibilityStatus === 'eligible';
+      const postCreditConflict = postCredit && !subsidyEligible;
+      // A private-pay family has no ELFA tier to conflict with: the provider simply does not
+      // publish the tuition that family would pay.
+      const privatePayRateUnpublished = postCreditConflict && activeTier === 'privatePay';
+      const hasCompleteRate = isRateSafeForBudget(rate.status) && !postCreditConflict;
+      const freeTier = activeTier === 'freeTuitionELFA' && subsidyEligible;
+      const appliedSubsidyAmount = subsidyEligible && !postCredit && !freeTier
+        ? subsidyAmount
+        : 0;
+      // Post-credit amounts are not gross tuition, so gross stays unknown for those providers.
+      const grossTuition = postCredit ? null : rate.conservativeGross;
+      const costEstimate = postCreditConflict
+        ? {
+            min: null,
+            max: null,
+            estimate: null,
+            basis: privatePayRateUnpublished
+              ? 'private_pay_rate_not_published'
+              : 'provider_aid_and_post_credit_rate_conflict'
+          }
+        : estimateOutOfPocket(rate, appliedSubsidyAmount, freeTier, rateBasis);
       const netMonthly = costEstimate.estimate;
-      const costEstimateBasis = freeTier
-        ? 'ELFA free-tuition copay, conditional on an approved award and available funded slot'
-        : (hasCompleteRate
-          ? 'Published CareWait rate minus the applicable ELFA credit; upper end used for budget fit'
-          : 'Unverified or incomplete published rate');
+      let costEstimateBasis;
+      if (freeTier) {
+        costEstimateBasis = 'ELFA free-tuition copay, conditional on an approved award and available funded slot';
+      } else if (privatePayRateUnpublished) {
+        costEstimateBasis = 'Provider publishes only amounts families pay after the ELFA credit, so its private-pay tuition is not published; verify the rate with the provider';
+      } else if (postCreditConflict) {
+        costEstimateBasis = 'Provider rate notes mention an ELFA-adjusted amount, but this provider does not confirm the selected ELFA tier; verify the applicable rate';
+      } else if (!hasCompleteRate) {
+        costEstimateBasis = 'Unverified or incomplete published rate';
+      } else if (postCredit) {
+        costEstimateBasis = 'Provider publishes the amount families pay after the ELFA credit; upper end used for budget fit, credit not subtracted again';
+      } else if (subsidyEligible) {
+        costEstimateBasis = 'Published CareWait rate minus the provider-confirmed applicable ELFA credit; upper end used for budget fit';
+      } else if (activeTier === 'privatePay') {
+        costEstimateBasis = 'Published CareWait rate; no ELFA credit assumed';
+      } else if (subsidyEligibilityStatus === 'not_listed') {
+        costEstimateBasis = 'Provider does not list the selected ELFA tier; no credit applied to the published rate';
+      } else {
+        costEstimateBasis = 'Provider ELFA eligibility is unknown; no credit applied to the published rate';
+      }
 
       const ccld = site.ccldInspection || null;
       const ccldVerificationStatus = ccld?.verificationStatus || 'unavailable';
       const inspectionDataStatus = ccld?.inspectionDataStatus || 'unavailable';
       const licenseStatus = ccld?.status || null;
       const ccldVerified = isVerifiedLicensedFacility(ccld);
-      const diaperingStatus = ageCategory !== 'toddler'
+      const supportEvidence = getCareSupportEvidence(site.accommodations || []);
+      const diaperingStatus = site.diaperingStatus === 'confirmed' ||
+        site.diaperingAccommodated === true || supportEvidence.diaperingStatus === 'confirmed'
+        ? 'confirmed'
+        : 'unknown';
+      const pottyTrainingStatus = site.pottyTrainingStatus === 'confirmed' ||
+        supportEvidence.pottyTrainingStatus === 'confirmed'
+        ? 'confirmed'
+        : 'unknown';
+      // Diaper-change evidence is required whenever the family says the child is not potty
+      // trained, and for toddlers whose status is unknown; toilet training is never assumed
+      // from a preschool age when the family has said otherwise. Infant care is not gated here.
+      const needsDiaperChanges = ageCategory === 'toddler'
+        ? childIsPottyTrained !== true
+        : (ageCategory === 'preschool' && childIsPottyTrained === false);
+      const reportCareEvidence = ageCategory === 'toddler' || needsDiaperChanges;
+      const diaperingFitStatus = !needsDiaperChanges
         ? 'not_required'
-        : ((site.diaperingStatus === 'confirmed' || site.diaperingAccommodated === true)
+        : (diaperingStatus === 'confirmed'
           ? 'confirmed'
-          : 'unknown');
+          : (pottyTrainingStatus === 'confirmed'
+            ? 'potty_training_only_diapering_unconfirmed'
+            : 'unknown'));
       const userLocation = homeZipCode || homeLocation;
       const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
 
@@ -150,23 +212,33 @@ export async function getRecommendations(
         email: site.email,
         programType: site.programType,
         languages: site.languages || [],
+        financialAid: site.financialAid || [],
         programs: (site.programsOffered || []).map((program) =>
           program.name + ' (' + program.minAgeMonths + '-' + program.maxAgeMonths + ' mo)'
         ),
         ageFitStatus: ageFit.status,
         grossMonthlyTuition: grossTuition,
-        grossMonthlyTuitionMin: rate.min,
-        grossMonthlyTuitionMax: rate.max,
-        monthlySubsidyCredit: subsidyAmount,
+        grossMonthlyTuitionMin: postCredit ? null : rate.min,
+        grossMonthlyTuitionMax: postCredit ? null : rate.max,
+        rateBasis,
+        publishedMonthlyMin: rate.min,
+        publishedMonthlyMax: rate.max,
+        monthlySubsidyCredit: subsidyEligible ? subsidyAmount : 0,
+        monthlySubsidyCreditAppliedToRate: appliedSubsidyAmount,
+        scheduledMonthlySubsidyCredit: subsidyAmount,
+        subsidyEligibilityStatus,
         estimatedNetOutOfPocketMonthly: netMonthly,
         estimatedNetOutOfPocketMonthlyMin: costEstimate.min,
         estimatedNetOutOfPocketMonthlyMax: costEstimate.max,
         costEstimateBasis,
-        rateStatus: rate.status,
+        rateStatus: privatePayRateUnpublished
+          ? 'unverified_private_pay_rate'
+          : (postCreditConflict ? 'conflicting_rate_and_aid_data' : rate.status),
         rateNotes: site.rateNotes || '',
         schedule: site.schedule || [],
         description: site.description || '',
         licenseNumber: site.licenseNumber,
+        licenseNumbers: site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []),
         licenseStatus,
         ccldVerificationStatus,
         inspectionDataStatus,
@@ -174,13 +246,27 @@ export async function getRecommendations(
         ccldInspection: ccld,
         diaperingAccommodated: diaperingStatus === 'confirmed',
         diaperingStatus,
+        pottyTrainingStatus,
+        diaperingFitStatus,
+        diaperingEvidenceScore: reportCareEvidence
+          ? (site.diaperingEvidenceScore ?? (diaperingStatus === 'confirmed' ? 100 : 25))
+          : null,
+        pottyTrainingEvidenceScore: reportCareEvidence
+          ? (site.pottyTrainingEvidenceScore ?? (pottyTrainingStatus === 'confirmed' ? 100 : 25))
+          : null,
+        diaperingEvidenceSource: site.diaperingEvidenceSource ||
+          supportEvidence.diaperingEvidenceSource ||
+          (diaperingStatus === 'confirmed' ? 'Provider detail record' : null),
+        pottyTrainingEvidenceSource: site.pottyTrainingEvidenceSource ||
+          supportEvidence.pottyTrainingEvidenceSource ||
+          (pottyTrainingStatus === 'confirmed' ? 'Provider detail record' : null),
         distanceMiles: proximity.distanceMiles,
         proximityRating: proximity.proximityRating,
         proximityLevel: proximity.proximityLevel,
         isImmediateNeighborhood: proximity.isImmediateNeighborhood,
         _hasCompleteRate: hasCompleteRate,
         _ccldVerified: ccldVerified,
-        _diaperingVerified: diaperingStatus === 'confirmed' || diaperingStatus === 'not_required'
+        _diaperingVerified: diaperingFitStatus === 'confirmed' || diaperingFitStatus === 'not_required'
       });
     } catch (error) {
       lookupWarnings.push({
@@ -226,7 +312,7 @@ export async function getRecommendations(
     .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
 
   const unverifiedDiapering = detailedCandidates
-    .filter((candidate) => candidate.diaperingStatus === 'unknown')
+    .filter((candidate) => !candidate._diaperingVerified)
     .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
 
   const publicCandidates = (candidates) => candidates.map(({
@@ -238,9 +324,14 @@ export async function getRecommendations(
 
   return {
     childAgeYears,
+    childIsPottyTrained: childIsPottyTrained ?? null,
     ageCategory,
     subsidyBenefitTier: activeTier,
     monthlySubsidyDiscount: subsidyAmount,
+    potentialMonthlySubsidyDiscount: subsidyAmount,
+    monthlySubsidyDiscountBasis: activeTier === 'privatePay'
+      ? 'No ELFA credit assumed.'
+      : 'Potential DEC credit; applied to a provider only when its detail record lists the selected tier.',
     targetBudgetMonthly,
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',

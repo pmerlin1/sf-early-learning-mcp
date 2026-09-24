@@ -19,8 +19,11 @@ export function summarizeInspectionRecord(facility) {
   };
 
   const f = facility || {};
-  const totalTypeA = sumRequired(f.NBRINSPTYPA, f.NBRCMPLTTYPA, f.TOTTYPEA);
-  const totalTypeB = sumRequired(f.NBRINSPTYPB, f.NBRCMPLTTYPB, f.TOTTYPEB);
+  // CCLD reports citations per visit type: inspection (NBRINSP*), complaint (NBRCMPLT*),
+  // and other visits (NBROTHER*). TOTTYPEA/TOTTYPEB summarize the complaint array and
+  // duplicate NBRCMPLTTYPA/B, so adding them would double-count complaint citations.
+  const totalTypeA = sumRequired(f.NBRINSPTYPA, f.NBRCMPLTTYPA, f.NBROTHERTYPA);
+  const totalTypeB = sumRequired(f.NBRINSPTYPB, f.NBRCMPLTTYPB, f.NBROTHERTYPB);
   const complaintVisits = firstKnown(f.NBRCMPLTVISITS, f.TOTCMPVISITS);
   const substantiatedAllegations = count(f.TOTSUBALG);
   const status = typeof f.STATUS === 'string' && f.STATUS.trim()
@@ -38,7 +41,7 @@ export function summarizeInspectionRecord(facility) {
 
   if (status && countsComplete) {
     rating = 'pristine';
-    safetySummary = 'Zero citations or complaints ever recorded.';
+    safetySummary = 'No citations or complaint visits in the CCLD public record.';
 
     if (status.toLowerCase() !== 'licensed') {
       rating = 'caution';
@@ -59,7 +62,7 @@ export function summarizeInspectionRecord(facility) {
         (totalTypeB > 0 || complaintVisits > 0)) {
       rating = 'minor_findings';
       safetySummary = 'Minor findings: ' + totalTypeB + ' Type B citations and ' +
-        complaintVisits + ' complaint visits (unsubstantiated).';
+        complaintVisits + ' complaint visits (no substantiated allegations).';
     }
   }
 
@@ -84,4 +87,34 @@ export function isVerifiedLicensedFacility(ccld) {
   return ccld?.verificationStatus === 'verified' &&
     ccld?.inspectionDataStatus === 'complete' &&
     String(ccld.status || '').trim().toLowerCase() === 'licensed';
+}
+
+const RATING_SEVERITY = { pristine: 0, minor_findings: 1, notable_citations: 2, caution: 3 };
+
+/**
+ * A provider can hold several CCLD licenses (for example separate infant and preschool
+ * licenses), and a toddler may be served under either one. The provider counts as verified
+ * only when every license is verified, and the most severe finding is the one reported, so
+ * a clean first license can never mask citations recorded under another license.
+ */
+export function combineInspectionRecords(records = []) {
+  const present = (Array.isArray(records) ? records : []).filter(Boolean);
+  if (present.length <= 1) return present[0] || null;
+
+  const unverified = present.find((record) => !isVerifiedLicensedFacility(record));
+  const primary = unverified || present.reduce((worst, record) =>
+    (RATING_SEVERITY[record.rating] ?? -1) > (RATING_SEVERITY[worst.rating] ?? -1) ? record : worst
+  );
+  const describe = (record, label) => 'License ' + record.licenseNumber +
+    (label ? ' (' + label + ')' : '') + ': ' +
+    (record.safetySummary || 'No CCLD summary available.');
+
+  return {
+    ...primary,
+    licenseCount: present.length,
+    safetySummary: [
+      describe(primary, unverified ? 'not verified' : 'most severe of ' + present.length),
+      ...present.filter((record) => record !== primary).map((record) => describe(record))
+    ].join(' ')
+  };
 }
