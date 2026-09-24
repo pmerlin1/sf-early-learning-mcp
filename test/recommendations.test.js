@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getRecommendations } from '../src/recommendations.js';
+import { ELFA_SOURCE_LIST } from '../src/constants.js';
 import {
   checkClassroomAge,
   estimateOutOfPocket,
@@ -302,6 +303,11 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.match(candidate.costEstimateBasis, /conditional/);
     assert.equal(candidate.rateStatus, 'unverified_blank_rates');
   });
+});
+
+test('recommendations cite the DEC documents behind the credit amounts', async () => {
+  const result = await recommendForProvider({});
+  assert.deepEqual(result.subsidySources, ELFA_SOURCE_LIST);
 });
 
 test('daycare type preference reaches the provider search', async (t) => {

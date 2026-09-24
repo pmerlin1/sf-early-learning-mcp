@@ -1,6 +1,7 @@
 import {
   ELFA_FAMILY_SIZES,
   ELFA_INCOME_TABLE_FY26_27,
+  ELFA_SOURCE_LIST,
   LARGEST_ELFA_FAMILY_SIZE
 } from './constants.js';
 
@@ -85,8 +86,9 @@ export const FAMILY_INTAKE_QUESTIONS = [
     header: 'Schedule',
     question: 'Do you need full-time or part-time care?',
     parameter: 'schedule',
-    agentNote: 'Net-cost estimates use full-time ELFA credit amounts; for part-time care, confirm ' +
-      'the credit with the provider before quoting a co-pay.',
+    agentNote: 'This filters programs; it does not change the ELFA credit. Credits are the same for ' +
+      'part-time care: DEC sets them as a percentage of its full-time rate, and the part-time rates on ' +
+      'its rate sheet are only for program funding (see Sources).',
     options: [
       { label: 'Full-time', description: 'Full weekday care', value: 'fullTime' },
       { label: 'Part-time', description: 'Shorter days or fewer days a week', value: 'partTime' }
@@ -243,7 +245,7 @@ export function buildFamilyIntakePrompt() {
     'Follow-up round (ask together, only what is still missing):',
     ...followUp.map((question, index) => renderQuestion(question, firstRound.length + index + 1)),
     '',
-    'ELFA annual income ranges (FY 2026-2027) by household size:',
+    'ELFA annual income ranges by household size (DEC FY 2026-2027 income eligibility sheet, under Sources):',
     renderIncomeCeilings(),
     'Range answers map to benefitTier: ' + buildIncomeOptions(3)
       .map((option) => option.description + ' → "' + option.value + '"')
@@ -253,6 +255,12 @@ export function buildFamilyIntakePrompt() {
       'and returns a familySizeNote to pass on.',
     '',
     'Then call get_smart_recommendations with every mapped answer, including childIsPottyTrained ' +
-      'and programType, and verify licensing with the CCLD fields it returns.'
+      'and programType, and verify licensing with the CCLD fields it returns.',
+    '',
+    'Sources to cite when the family asks where a rule or number comes from. Do not cite ' +
+      'legacy.sfdec.org, which still shows FY 2025-2026 figures.',
+    ...ELFA_SOURCE_LIST.map((source) =>
+      '- ' + source.title + ' (' + source.publisher + ', published ' + source.published + '): ' + source.url
+    )
   ].join('\n');
 }

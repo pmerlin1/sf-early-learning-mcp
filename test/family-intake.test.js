@@ -4,6 +4,7 @@ import { calculateEligibility } from '../src/eligibility.js';
 import {
   ELFA_FAMILY_SIZES,
   ELFA_INCOME_TABLE_FY26_27,
+  ELFA_SOURCE_LIST,
   RECOMMENDATION_PROGRAM_TYPES,
   SCHEDULE_TYPES
 } from '../src/constants.js';
@@ -134,6 +135,13 @@ test('family intake MCP prompt', async (t) => {
     assert.ok(prompt.includes('- 11–12 people: ELFA Free Tuition up to $278,200;'));
     assert.ok(prompt.includes('ELFA Half Tuition Credit → "halfCreditELFA"'));
     assert.match(prompt, /families of up to 12 people/);
+  });
+
+  await t.test('cites DEC sources and says part-time care gets the same credit', () => {
+    for (const source of ELFA_SOURCE_LIST) assert.ok(prompt.includes(source.url), source.url);
+    assert.match(question('schedule').agentNote, /same for part-time care/);
+    assert.doesNotMatch(prompt, /confirm the credit with the provider/);
+    assert.match(prompt, /Do not cite legacy\.sfdec\.org/);
   });
 
   await t.test('prompt listing names both rounds', () => {

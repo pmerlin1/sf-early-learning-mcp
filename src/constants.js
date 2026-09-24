@@ -1,5 +1,42 @@
-// Authoritative San Francisco Department of Early Childhood (DEC) Data
-// Fiscal Year 2026-2027 (July 1, 2026 - June 30, 2027)
+// San Francisco Department of Early Childhood (DEC) data for fiscal year 2026-2027
+// (July 1, 2026 - June 30, 2027). The rates and income ceilings below come from the DEC
+// documents in ELFA_SOURCES_FY26_27. legacy.sfdec.org still shows FY 2025-2026 figures,
+// so it is not cited.
+
+export const ELFA_SOURCES_FY26_27 = {
+  rates: {
+    title: 'Early Learning For All Rates - Fiscal Year 2026-2027',
+    publisher: 'San Francisco Department of Early Childhood (DEC)',
+    url: 'https://media.api.sf.gov/documents/Early_Learning_For_All_Rates_FY_26-27.pdf',
+    published: '2026-07-01',
+    accessed: '2026-09-24',
+    supports: 'DEC full-time and part-time reimbursement rates and the monthly ELFA credit amounts'
+  },
+  incomeEligibility: {
+    title: 'FY 2026-2027 San Francisco Family Income Eligibility (State CDE-CDSS and ELFA)',
+    publisher: 'San Francisco Department of Early Childhood (DEC)',
+    url: 'https://media.api.sf.gov/documents/State_CDE-CDSS_and_ELFA_Family_Income_Eligibility_FY_26-27_1.pdf',
+    published: '2026-07-01',
+    accessed: '2026-09-24',
+    supports: 'State CCTR and CSPP and ELFA income ceilings for families of 1 to 12'
+  },
+  tierRules: {
+    title: 'Eligibility for free or low-cost preschool and child care',
+    publisher: 'San Francisco Department of Early Childhood (DEC), on SF.gov',
+    url: 'https://www.sf.gov/eligibility-for-free-or-low-cost-preschool-and-child-care',
+    published: '2026-07-01',
+    accessed: '2026-09-24',
+    supports: 'ELFA tier definitions (credits equal 100% or 50% of DEC\'s full-time reimbursement rate) and co-pay rules'
+  }
+};
+
+export const ELFA_SOURCE_LIST = Object.values(ELFA_SOURCES_FY26_27);
+
+export const ELFA_CREDIT_BASIS =
+  'ELFA credits equal 100% (Full Tuition Credit) or 50% (Half Tuition Credit) of DEC\'s full-time ' +
+  'reimbursement rate for the child\'s age group, and DEC publishes one credit amount per age group, ' +
+  'so the credit is the same for part-time care. The part-time rates on DEC\'s rate sheet are listed ' +
+  'only to calculate funding gaps between state vouchers and ELFA rates.';
 
 export const ELFA_RATES_FY26_27 = {
   fiscalYear: '2026-2027',
@@ -9,6 +46,8 @@ export const ELFA_RATES_FY26_27 = {
     toddler: { minAgeMonths: 24, maxAgeMonths: 36, rate: 2306, annual: 27672 },
     preschool: { minAgeMonths: 36, maxAgeMonths: 60, rate: 2115, annual: 25380 }
   },
+  // DEC lists part-time rates only to calculate funding gaps between state vouchers and ELFA
+  // rates. They are not family credits; see ELFA_CREDIT_BASIS.
   partTimeMonthlyReimbursement: {
     infant: { minAgeMonths: 0, maxAgeMonths: 24, rate: 1669, annual: 20028 },
     toddler: { minAgeMonths: 24, maxAgeMonths: 36, rate: 1281, annual: 15372 },

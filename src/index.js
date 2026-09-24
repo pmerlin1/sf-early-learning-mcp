@@ -9,21 +9,14 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { calculateEligibility } from './eligibility.js';
+import { calculateEligibility, getElfaRatesAndRules } from './eligibility.js';
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
 import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
 import { buildFamilyIntakePrompt, describeFamilyIntakePrompt } from './family-intake.js';
-import {
-  ELFA_RATES_FY26_27,
-  ELFA_INCOME_TABLE_FY26_27,
-  LANGUAGE_MAP,
-  FINANCIAL_ASSISTANCE_MAP,
-  RECOMMENDATION_PROGRAM_TYPES,
-  SCHEDULE_TYPES
-} from './constants.js';
+import { RECOMMENDATION_PROGRAM_TYPES, SCHEDULE_TYPES } from './constants.js';
 
 const server = new Server(
   {
@@ -45,7 +38,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'check_elfa_eligibility',
         description:
-          'Calculate San Francisco Early Learning For All (ELFA) financial assistance eligibility, income tier (Free 0-110% AMI, Full Credit 111-150% AMI, Half Credit 151-200% AMI), exact monthly subsidy amounts, and co-pay rules for a family.',
+          'Calculate San Francisco Early Learning For All (ELFA) financial assistance eligibility, income tier (Free 0-110% AMI, Full Credit 111-150% AMI, Half Credit 151-200% AMI), exact monthly subsidy amounts, and co-pay rules for a family. Covers families of 1-12 with DEC\'s FY 2026-2027 tables and returns the DEC documents it relies on in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -198,7 +191,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_elfa_rates_and_rules',
         description:
-          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables, and program rules.',
+          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules, including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {}
@@ -345,28 +338,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_elfa_rates_and_rules': {
         return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  ratesFY2627: ELFA_RATES_FY26_27,
-                  incomeEligibilityCeilings: ELFA_INCOME_TABLE_FY26_27,
-                  languages: LANGUAGE_MAP,
-                  financialAssistancePrograms: FINANCIAL_ASSISTANCE_MAP,
-                  rulesSummary: [
-                    'ELFA Free Tuition (0-110% AMI): 100% free enrollment; programs CANNOT charge any co-pays or fees.',
-                    'ELFA Full Tuition Credit (111-150% AMI): Monthly credit equal to 100% of DEC rate ($3,027 Infant, $2,306 Toddler, $2,115 Preschooler); programs may charge a co-pay equal to private tuition minus credit.',
-                    'ELFA Half Tuition Credit (151-200% AMI): Monthly credit equal to 50% of DEC rate ($1,514 Infant, $1,153 Toddler, $1,058 Preschooler); family pays remaining tuition.',
-                    'Over 200% AMI: Private pay, though some programs offer sliding scales or district TK for 4-year-olds.',
-                    'Age Groups: Infant = 0-24 months; Toddler = 24-36 months; Preschooler = 3-5 years (36-60+ months).'
-                  ]
-                },
-                null,
-                2
-              )
-            }
-          ]
+          content: [{ type: 'text', text: JSON.stringify(getElfaRatesAndRules(), null, 2) }]
         };
       }
 

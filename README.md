@@ -9,7 +9,7 @@ Includes a **TypeSafe Jev System One** evaluator and a comparison matrix for Jev
 ## Features
 
 - **Live CareWait Search**: Search 500+ licensed San Francisco preschools and child care centers with real-time filters for age, language immersion, facility type, schedule (full-time vs part-time), and subsidy programs.
-- **Authoritative FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits.
+- **Authoritative FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits, with citations to the DEC source documents.
 - **Net Out-of-Pocket Estimates**: Applies the applicable credit to a published tuition rate, uses the conservative end of a known range for budget fit, and leaves blank or incomplete rates unverified.
 - **TypeSafe Jev System One Integration**: Uses TypeSafe's JavaScript SDK with typed `score` and `choice` questions. Jev judgments require `TYPESAFE_API_KEY`; they do not replace official records or deterministic eligibility checks.
 - **Heuristic Comparison Tool**: Compares Jev's live model output with a rule-based budget heuristic. No generative LLM is called.
@@ -24,12 +24,14 @@ Includes a **TypeSafe Jev System One** evaluator and a comparison matrix for Jev
 | **Full Tuition Credit** | **111% – 150% AMI** ($160,501–$218,850/yr for family of 3) | **$3,027 / mo** | **$2,306 / mo** | **$2,115 / mo** | Co-pay = Tuition − credit |
 | **Half Tuition Credit** | **151% – 200% AMI** ($218,851–$291,800/yr for family of 3) | **$1,514 / mo** | **$1,153 / mo** | **$1,058 / mo** | Family pays remaining tuition |
 
+Credits are a percentage of DEC's full-time reimbursement rate, so they are the same for part-time care. DEC lists part-time rates only to calculate funding gaps between state vouchers and ELFA rates. Income ceilings for families of 1–12 are in DEC's income eligibility sheet; see [Sources](#sources).
+
 ---
 
 ## Available MCP Tools
 
 ### 1. `check_elfa_eligibility`
-Computes exact ELFA financial assistance tier, monthly discount credits, and co-pay rules given family size, income, and child age.
+Computes exact ELFA financial assistance tier, monthly credit amount, and co-pay rules given family size (1–12), income, and child age, and returns the DEC documents it relies on in `sources`.
 
 ### 2. `search_sf_childcare`
 Queries the live SF CareWait database with rich filters:
@@ -45,13 +47,13 @@ Queries the live SF CareWait database with rich filters:
 Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
-All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit.
+All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit. The DEC documents behind the credit amounts are returned in `subsidySources`.
 
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
 
 ### 6. `get_elfa_rates_and_rules`
-Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings, and regulatory guidelines.
+Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings (families of 1–12), and program rules, with the DEC source documents in `sources`.
 
 ### 7. `get_state_licensing_record`
 Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number.
@@ -172,7 +174,19 @@ Examples for a toddler (24–36 months) in the Half Tuition Credit tier ($1,153/
 | A blank rate, or only a preschool rate | **Unknown**; the rate is unverified until confirmed on the provider's own site or by the provider |
 | Any rate, with the family in the Free Tuition tier (0–110% AMI) | **$0**, conditional on an approved ELFA award and an available funded slot |
 
-The credit applies only at providers whose CareWait financial-aid list includes the family's ELFA tier.
+The credit applies only at providers whose CareWait financial-aid list includes the family's ELFA tier. It is the same for part-time care.
+
+---
+
+## Sources
+
+DEC figures and rules come from these FY 2026–2027 documents, published July 1, 2026 and accessed September 24, 2026:
+
+- [Early Learning For All Rates – Fiscal Year 2026–2027](https://media.api.sf.gov/documents/Early_Learning_For_All_Rates_FY_26-27.pdf): reimbursement rates and monthly credit amounts. Its footnote says part-time rates are listed only to calculate funding gaps between state vouchers and ELFA rates.
+- [FY 2026–2027 San Francisco Family Income Eligibility](https://media.api.sf.gov/documents/State_CDE-CDSS_and_ELFA_Family_Income_Eligibility_FY_26-27_1.pdf): State CCTR/CSPP and ELFA income ceilings for families of 1–12.
+- [Eligibility for free or low-cost preschool and child care](https://www.sf.gov/eligibility-for-free-or-low-cost-preschool-and-child-care) (SF.gov): tier definitions and co-pay rules.
+
+DEC posts both FY 2026–2027 sheets on its [rates page](https://www.sf.gov/early-learning-for-all-rates-fiscal-year-2026-2027). The older legacy.sfdec.org page still shows FY 2025–2026 figures. Provider tuition comes from CareWait, and licensing records from the California CCLD transparency API.
 
 ---
 

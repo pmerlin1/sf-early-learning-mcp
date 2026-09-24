@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateEligibility } from '../src/eligibility.js';
+import { calculateEligibility, getElfaRatesAndRules } from '../src/eligibility.js';
 import {
   ELFA_INCOME_TABLE_FY26_27,
   ELFA_RATES_FY26_27,
+  ELFA_SOURCE_LIST,
   LARGEST_ELFA_FAMILY_SIZE
 } from '../src/constants.js';
 
@@ -71,6 +72,42 @@ test('calculateEligibility - household sizes on DEC\'s income sheet', async (t) 
     assert.equal(result.thresholds.freeTuitionMonthlyCeiling, ELFA_INCOME_TABLE_FY26_27[12].freeMonthly);
     assert.match(result.familySizeNote, /up to 12 people/);
     assert.match(result.familySizeNote, /family of 14/);
+  });
+});
+
+test('ELFA results cite DEC documents', async (t) => {
+  const sourceUrls = ELFA_SOURCE_LIST.map((source) => source.url);
+
+  await t.test('eligibility results carry the credit basis and the DEC sources', () => {
+    const result = calculateEligibility({ familySize: 3, monthlyIncome: 22000, childAgeYears: 2.1 });
+    assert.deepEqual(result.sources.map((source) => source.url), sourceUrls);
+    assert.match(result.creditBasis, /full-time reimbursement rate/);
+    assert.match(result.creditBasis, /same for part-time care/);
+    assert.match(result.explanation, /50% of DEC's full-time reimbursement rate/);
+  });
+
+  await t.test('rates and rules credit part-time care the same and cite each document', () => {
+    const rules = getElfaRatesAndRules();
+    assert.deepEqual(rules.sources.map((source) => source.url), sourceUrls);
+    assert.ok(rules.rulesSummary.some((rule) =>
+      rule.includes("100% of DEC's full-time rate ($3,027 Infant, $2,306 Toddler, $2,115 Preschooler)")));
+    assert.ok(rules.rulesSummary.some((rule) =>
+      rule.includes("50% of DEC's full-time rate ($1,514 Infant, $1,153 Toddler, $1,058 Preschooler)")));
+    assert.ok(rules.rulesSummary.some((rule) =>
+      rule.startsWith('Part-time care:') && rule.includes('same for part-time care')));
+    assert.equal(rules.incomeEligibilityCeilings[12].halfAnnual, 505800);
+  });
+
+  await t.test('cites the current DEC documents with their publication dates', () => {
+    assert.deepEqual(sourceUrls, [
+      'https://media.api.sf.gov/documents/Early_Learning_For_All_Rates_FY_26-27.pdf',
+      'https://media.api.sf.gov/documents/State_CDE-CDSS_and_ELFA_Family_Income_Eligibility_FY_26-27_1.pdf',
+      'https://www.sf.gov/eligibility-for-free-or-low-cost-preschool-and-child-care'
+    ]);
+    for (const source of ELFA_SOURCE_LIST) {
+      assert.equal(source.published, '2026-07-01');
+      assert.match(source.accessed, /^\d{4}-\d{2}-\d{2}$/);
+    }
   });
 });
 

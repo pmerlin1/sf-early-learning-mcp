@@ -1,6 +1,6 @@
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { calculateEligibility } from './eligibility.js';
-import { ELFA_RATES_FY26_27 } from './constants.js';
+import { ELFA_RATES_FY26_27, ELFA_SOURCE_LIST } from './constants.js';
 import { evaluateProximity } from './geo-utils.js';
 import { isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
@@ -336,6 +336,8 @@ export async function getRecommendations(
     monthlySubsidyDiscountBasis: activeTier === 'privatePay'
       ? 'No ELFA credit assumed.'
       : 'Potential DEC credit; applied to a provider only when its detail record lists the selected tier.',
+    // DEC documents behind the tier and credit amounts. Provider facts come from CareWait and CCLD.
+    subsidySources: ELFA_SOURCE_LIST,
     targetBudgetMonthly,
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
