@@ -95,6 +95,10 @@ export const FINANCIAL_ASSISTANCE_MAP = {
   tuitionAssistance: 'Tuition Assistance / Sliding Scale'
 };
 
+// Daycare-type values accepted by get_smart_recommendations and compare_heuristic_vs_jev.
+export const RECOMMENDATION_PROGRAM_TYPES = ['licensedCenter', 'licensedFamilyChildCare', 'any'];
+export const SCHEDULE_TYPES = ['partTime', 'fullTime'];
+
 export const PROGRAM_TYPES = {
   center: 'licensedCenter',
   licensedCenter: 'licensedCenter',

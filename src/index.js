@@ -15,12 +15,14 @@ import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
 import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
-import { buildFamilyIntakePrompt } from './family-intake.js';
+import { buildFamilyIntakePrompt, describeFamilyIntakePrompt } from './family-intake.js';
 import {
   ELFA_RATES_FY26_27,
   ELFA_INCOME_TABLE_FY26_27,
   LANGUAGE_MAP,
-  FINANCIAL_ASSISTANCE_MAP
+  FINANCIAL_ASSISTANCE_MAP,
+  RECOMMENDATION_PROGRAM_TYPES,
+  SCHEDULE_TYPES
 } from './constants.js';
 
 const server = new Server(
@@ -177,12 +179,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             programType: {
               type: 'string',
-              enum: ['licensedCenter', 'licensedFamilyChildCare', 'any'],
+              enum: RECOMMENDATION_PROGRAM_TYPES,
               description: 'licensedCenter (dedicated preschool center; the default when omitted), licensedFamilyChildCare (licensed in-home daycare), or any (either licensed setting). Pass the family\'s answer; omitting it limits results to centers.'
             },
             schedule: {
               type: 'string',
-              enum: ['partTime', 'fullTime'],
+              enum: SCHEDULE_TYPES,
               description: 'Schedule preference'
             },
             maxResults: {
@@ -248,7 +250,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             programType: {
               type: 'string',
-              enum: ['licensedCenter', 'licensedFamilyChildCare', 'any'],
+              enum: RECOMMENDATION_PROGRAM_TYPES,
               description: 'licensedCenter (default), licensedFamilyChildCare, or any (either licensed setting)'
             },
             candidateCount: {
@@ -283,8 +285,7 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
     prompts: [
       {
         name: 'family_intake_interview',
-        description:
-          'A structured guide for interviewing a San Francisco family. The first question round must include child age, potty training, family size, neighborhood, schedule, and daycare type (licensed center vs family child care home).'
+        description: describeFamilyIntakePrompt()
       }
     ]
   };
