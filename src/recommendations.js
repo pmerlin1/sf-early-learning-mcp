@@ -14,6 +14,10 @@ import {
   rankCandidates
 } from './recommendation-utils.js';
 
+// "Either" means either licensed setting. License-exempt programs have no CCLD record to
+// verify, so they are left out rather than crowding licensed programs out of the batch.
+const LICENSED_PROGRAM_TYPES = ['licensedCenter', 'licensedFamilyChildCare'];
+
 function normalizeTier(tier) {
   if (tier === 'elfaHalfCredit' || tier === 'halfCreditELFA') return 'halfCreditELFA';
   if (tier === 'elfaFullCredit' || tier === 'fullCreditELFA') return 'fullCreditELFA';
@@ -81,7 +85,7 @@ export async function getRecommendations(
   const subsidyAmount = subsidyForTier(activeTier, ageCategory);
   const searchFilter = {
     ageYears: Math.floor(childAgeYears),
-    programType,
+    programType: programType === 'any' ? LICENSED_PROGRAM_TYPES : programType,
     financialAid: activeTier !== 'privatePay' ? [activeTier] : undefined,
     language: preferredLanguage,
     schedule: schedule ? [schedule] : undefined,
@@ -335,6 +339,7 @@ export async function getRecommendations(
     targetBudgetMonthly,
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
+    programTypePreference: programType,
     totalFound: detailedCandidates.length,
     recommendations: publicCandidates(withinBudget.slice(0, maxResults)),
     stretchOptions: publicCandidates(stretchOptions.slice(0, 3)),

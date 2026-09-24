@@ -107,6 +107,8 @@ test('Jev evaluator uses live typed answers and preserves their probabilities', 
 
     assert.equal(calls, 1);
     assert.equal(observedState.familyProfile.pottyTrained, null);
+    assert.equal(observedState.familyProfile.preferredProgramType, 'licensedCenter');
+    assert.equal(observedState.familyProfile.wantsLicensedCenter, undefined);
     assert.equal(observedState.candidate.diaperingEvidenceScore, 100);
     assert.equal(observedState.candidate.pottyTrainingEvidenceScore, 25);
     assert.equal(observedState.candidate.ageFitStatus, 'unknown');
@@ -164,11 +166,12 @@ test('Jev excludes diapering from composite when the family says it is not neede
   try {
     const results = await evaluateCandidatesWithJev(
       [{ ...candidate, diaperingFitStatus: 'not_required' }],
-      { childAgeYears: 2.1, childIsPottyTrained: true },
+      { childAgeYears: 2.1, childIsPottyTrained: true, programType: 'licensedFamilyChildCare' },
       {
         clientFactory: () => ({
           systemOne: async ({ state, questions }) => {
             assert.equal(state.familyProfile.pottyTrained, true);
+            assert.equal(state.familyProfile.preferredProgramType, 'licensedFamilyChildCare');
             assert.equal(questions.toddlerDiaperingFit, undefined);
             return {
               model: 'fixture-jev-model',

@@ -177,8 +177,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             programType: {
               type: 'string',
-              enum: ['licensedCenter', 'licensedFamilyChildCare'],
-              description: 'Default is licensedCenter (dedicated preschool center)'
+              enum: ['licensedCenter', 'licensedFamilyChildCare', 'any'],
+              description: 'licensedCenter (dedicated preschool center; the default when omitted), licensedFamilyChildCare (licensed in-home daycare), or any (either licensed setting). Pass the family\'s answer; omitting it limits results to centers.'
             },
             schedule: {
               type: 'string',
@@ -245,6 +245,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             homeZipCode: {
               type: 'number',
               description: 'Family home zip code (e.g. 94121) to calculate distance and score location convenience'
+            },
+            programType: {
+              type: 'string',
+              enum: ['licensedCenter', 'licensedFamilyChildCare', 'any'],
+              description: 'licensedCenter (default), licensedFamilyChildCare, or any (either licensed setting)'
             },
             candidateCount: {
               type: 'number',

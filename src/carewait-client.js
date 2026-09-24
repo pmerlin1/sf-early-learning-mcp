@@ -59,7 +59,10 @@ export async function searchProfiles(options = {}) {
   }
 
   if (programType) {
-    const types = Array.isArray(programType) ? programType : [programType];
+    // 'any' means no program-type restriction. Sent as-is, CareWait treats it as an unknown
+    // type and returns zero results.
+    const types = (Array.isArray(programType) ? programType : [programType])
+      .filter((type) => type && type !== 'any');
     query.programType = types.map(t => PROGRAM_TYPES[t] || t);
   }
 
