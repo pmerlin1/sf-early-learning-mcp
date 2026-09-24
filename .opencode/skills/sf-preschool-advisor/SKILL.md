@@ -71,6 +71,8 @@ Always cross-reference facilities with the official California Community Care Li
 
 Do not describe citations as routine, minor, or resolved unless the CCLD report text says so; link the facility's CCLD page instead.
 
+Providers can hold more than one CCLD license (for example, separate infant and preschool licenses). `get_childcare_details` and `get_smart_recommendations` check every license on the CareWait profile, report the most severe finding, and treat the provider as unverified if any license record is missing or incomplete. When calling `get_state_licensing_record` directly, check each number in `licenseNumbers`.
+
 ---
 
 ## 4. Decision Model & Meta Composite Scoring (TypeSafe Jev)

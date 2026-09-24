@@ -88,3 +88,33 @@ export function isVerifiedLicensedFacility(ccld) {
     ccld?.inspectionDataStatus === 'complete' &&
     String(ccld.status || '').trim().toLowerCase() === 'licensed';
 }
+
+const RATING_SEVERITY = { pristine: 0, minor_findings: 1, notable_citations: 2, caution: 3 };
+
+/**
+ * A provider can hold several CCLD licenses (for example separate infant and preschool
+ * licenses), and a toddler may be served under either one. The provider counts as verified
+ * only when every license is verified, and the most severe finding is the one reported, so
+ * a clean first license can never mask citations recorded under another license.
+ */
+export function combineInspectionRecords(records = []) {
+  const present = (Array.isArray(records) ? records : []).filter(Boolean);
+  if (present.length <= 1) return present[0] || null;
+
+  const unverified = present.find((record) => !isVerifiedLicensedFacility(record));
+  const primary = unverified || present.reduce((worst, record) =>
+    (RATING_SEVERITY[record.rating] ?? -1) > (RATING_SEVERITY[worst.rating] ?? -1) ? record : worst
+  );
+  const describe = (record, label) => 'License ' + record.licenseNumber +
+    (label ? ' (' + label + ')' : '') + ': ' +
+    (record.safetySummary || 'No CCLD summary available.');
+
+  return {
+    ...primary,
+    licenseCount: present.length,
+    safetySummary: [
+      describe(primary, unverified ? 'not verified' : 'most severe of ' + present.length),
+      ...present.filter((record) => record !== primary).map((record) => describe(record))
+    ].join(' ')
+  };
+}

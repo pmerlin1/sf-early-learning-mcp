@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractLicenseNumber, getSiteDetails } from '../src/carewait-client.js';
-import { summarizeInspectionRecord } from '../src/ccld-utils.js';
+import { extractLicenseNumber, extractLicenseNumbers, getSiteDetails } from '../src/carewait-client.js';
+import {
+  combineInspectionRecords,
+  isVerifiedLicensedFacility,
+  summarizeInspectionRecord
+} from '../src/ccld-utils.js';
 import {
   detectRateBasis,
   estimateOutOfPocket,
@@ -35,6 +39,116 @@ test('CareWait license extraction', async (t) => {
     assert.equal(extractLicenseNumber({ license: [{ facilityStatus: 'licensed' }] }), null);
     assert.equal(extractLicenseNumber({ license: '[object Object]' }), null);
     assert.equal(extractLicenseNumber({}), null);
+  });
+
+  await t.test('returns every license for providers with separate infant and preschool licenses', () => {
+    const profile = {
+      license: [
+        { facilityNumber: '384004105', facilityType: 'dayCareCenter', facilityStatus: 'licensed' },
+        { facilityNumber: '384004104', facilityType: 'infantCenter', facilityStatus: 'licensed' }
+      ],
+      licenseNumbers: ['384004105']
+    };
+    assert.deepEqual(extractLicenseNumbers(profile), ['384004105', '384004104']);
+    assert.equal(extractLicenseNumber(profile), '384004105');
+    assert.deepEqual(extractLicenseNumbers({}), []);
+  });
+});
+
+test('providers with several CCLD licenses', async (t) => {
+  // YMCA SF Chinatown-Tung Lok lists two licenses; only the second has substantiated allegations.
+  const ymcaRecords = {
+    384004450: {
+      FACILITYNAME: 'YMCA SF CHINATOWN-TUNGLOK EARLY LEARNING CENTER', STATUS: 'Licensed',
+      NBRINSPTYPA: '0', NBRCMPLTTYPA: '0', NBROTHERTYPA: '0', TOTTYPEA: '0',
+      NBRINSPTYPB: '1', NBRCMPLTTYPB: '0', NBROTHERTYPB: '1', TOTTYPEB: '0',
+      NBRCMPLTVISITS: '0', TOTCMPVISITS: '0', TOTSUBALG: '0'
+    },
+    384004449: {
+      FACILITYNAME: 'YMCA SF CHINATOWN-TUNGLOK EARLY LEARNING CENTER', STATUS: 'Licensed',
+      NBRINSPTYPA: '0', NBRCMPLTTYPA: '0', NBROTHERTYPA: '0', TOTTYPEA: '0',
+      NBRINSPTYPB: '0', NBRCMPLTTYPB: '2', NBROTHERTYPB: '2', TOTTYPEB: '2',
+      NBRCMPLTVISITS: '2', TOTCMPVISITS: '2', TOTSUBALG: '2'
+    }
+  };
+  const summarize = (licenseNumber) => ({
+    licenseNumber,
+    ...summarizeInspectionRecord(ymcaRecords[licenseNumber])
+  });
+
+  await t.test('reports the most severe license instead of the first one listed', () => {
+    const combined = combineInspectionRecords([summarize('384004450'), summarize('384004449')]);
+    assert.equal(summarize('384004450').rating, 'minor_findings');
+    assert.equal(combined.rating, 'caution');
+    assert.equal(combined.licenseNumber, '384004449');
+    assert.equal(combined.substantiatedAllegations, 2);
+    assert.equal(combined.licenseCount, 2);
+    assert.match(combined.safetySummary, /^License 384004449 \(most severe of 2\): Caution/);
+    assert.match(combined.safetySummary, /License 384004450: Minor findings/);
+  });
+
+  await t.test('does not verify a provider when any one of its licenses is unverified', () => {
+    const unavailable = {
+      licenseNumber: '384004104',
+      verificationStatus: 'unavailable',
+      inspectionDataStatus: 'unavailable',
+      status: null,
+      rating: 'unknown',
+      safetySummary: 'CCLD lookup unavailable (HTTP 503).'
+    };
+    const combined = combineInspectionRecords([summarize('384004450'), unavailable]);
+    assert.equal(isVerifiedLicensedFacility(combined), false);
+    assert.equal(combined.licenseNumber, '384004104');
+    assert.match(combined.safetySummary, /^License 384004104 \(not verified\)/);
+  });
+
+  await t.test('leaves single-license and missing records unchanged', () => {
+    const single = summarize('384004450');
+    assert.equal(combineInspectionRecords([single]), single);
+    assert.equal(combineInspectionRecords([]), null);
+    assert.equal(combineInspectionRecords([null]), null);
+  });
+
+  await t.test('provider details look up every license listed on the CareWait profile', async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedLicenses = [];
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('/FacilityDetail/')) {
+        const licenseNumber = href.split('/').pop();
+        requestedLicenses.push(licenseNumber);
+        return { ok: true, json: async () => ({ FacilityDetail: ymcaRecords[licenseNumber] }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            profile: {
+              entityId: 'fixture-ymca-chinatown',
+              programName: 'YMCA SF Chinatown-Tung Lok Early Learning Center',
+              license: [
+                { facilityNumber: '384004450', facilityStatus: 'licensed' },
+                { facilityNumber: '384004449', facilityStatus: 'licensed' }
+              ],
+              financialAid: ['halfCreditELFA'],
+              program: [],
+              rates: {}
+            }
+          }
+        })
+      };
+    };
+    try {
+      const site = await getSiteDetails('fixture-ymca-chinatown');
+      assert.deepEqual(requestedLicenses.sort(), ['384004449', '384004450']);
+      assert.equal(site.licenseNumber, '384004450');
+      assert.deepEqual(site.licenseNumbers, ['384004450', '384004449']);
+      assert.equal(site.ccldInspections.length, 2);
+      assert.equal(site.ccldInspection.rating, 'caution');
+      assert.equal(site.ccldInspection.licenseNumber, '384004449');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

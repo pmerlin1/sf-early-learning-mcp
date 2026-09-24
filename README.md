@@ -63,7 +63,7 @@ Direct integration with the **California Community Care Licensing Division (CCLD
 Hard factual checks stay in application code. Jev supplies model judgments for the structured scoring dimensions:
 
 1. **Verified Requirements (Deterministic Gates)**:
-   - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean.
+   - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean. Providers with several licenses (e.g. separate infant and preschool licenses) are checked on every license, and the most severe finding is reported.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
    - Published rate, provider-confirmed ELFA tier, and required toddler diaper-change evidence before placement in verified recommendations. Potty-training support is tracked separately from diaper changes. A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.

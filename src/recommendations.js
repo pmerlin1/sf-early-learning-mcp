@@ -222,6 +222,7 @@ export async function getRecommendations(
         schedule: site.schedule || [],
         description: site.description || '',
         licenseNumber: site.licenseNumber,
+        licenseNumbers: site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []),
         licenseStatus,
         ccldVerificationStatus,
         inspectionDataStatus,
