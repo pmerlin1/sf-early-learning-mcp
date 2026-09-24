@@ -9,18 +9,14 @@ import {
   GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { calculateEligibility } from './eligibility.js';
+import { calculateEligibility, getElfaRatesAndRules } from './eligibility.js';
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
 import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
-import {
-  ELFA_RATES_FY26_27,
-  ELFA_INCOME_TABLE_FY26_27,
-  LANGUAGE_MAP,
-  FINANCIAL_ASSISTANCE_MAP
-} from './constants.js';
+import { buildFamilyIntakePrompt, describeFamilyIntakePrompt } from './family-intake.js';
+import { RECOMMENDATION_PROGRAM_TYPES, SCHEDULE_TYPES } from './constants.js';
 
 const server = new Server(
   {
@@ -42,7 +38,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'check_elfa_eligibility',
         description:
-          'Calculate San Francisco Early Learning For All (ELFA) financial assistance eligibility, income tier (Free 0-110% AMI, Full Credit 111-150% AMI, Half Credit 151-200% AMI), exact monthly subsidy amounts, and co-pay rules for a family.',
+          'Calculate San Francisco Early Learning For All (ELFA) financial assistance eligibility, income tier (Free 0-110% AMI, Full Credit 111-150% AMI, Half Credit 151-200% AMI), exact monthly subsidy amounts, and co-pay rules for a family. Covers families of 1-12 with DEC\'s FY 2026-2027 tables and returns the DEC documents it relies on in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -176,12 +172,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             programType: {
               type: 'string',
-              enum: ['licensedCenter', 'licensedFamilyChildCare'],
-              description: 'Default is licensedCenter (dedicated preschool center)'
+              enum: RECOMMENDATION_PROGRAM_TYPES,
+              description: 'licensedCenter (dedicated preschool center; the default when omitted), licensedFamilyChildCare (licensed in-home daycare), or any (either licensed setting). Pass the family\'s answer; omitting it limits results to centers.'
             },
             schedule: {
               type: 'string',
-              enum: ['partTime', 'fullTime'],
+              enum: SCHEDULE_TYPES,
               description: 'Schedule preference'
             },
             maxResults: {
@@ -195,7 +191,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_elfa_rates_and_rules',
         description:
-          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables, and program rules.',
+          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules, including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {}
@@ -245,6 +241,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Family home zip code (e.g. 94121) to calculate distance and score location convenience'
             },
+            programType: {
+              type: 'string',
+              enum: RECOMMENDATION_PROGRAM_TYPES,
+              description: 'licensedCenter (default), licensedFamilyChildCare, or any (either licensed setting)'
+            },
             candidateCount: {
               type: 'number',
               description: 'Number of candidates to evaluate in the A/B matrix (default 5)'
@@ -277,8 +278,7 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
     prompts: [
       {
         name: 'family_intake_interview',
-        description:
-          'A structured guide for interviewing a San Francisco family to discover their preschool needs, budget, language preferences, and ELFA subsidy eligibility.'
+        description: describeFamilyIntakePrompt()
       }
     ]
   };
@@ -293,16 +293,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           role: 'user',
           content: {
             type: 'text',
-            text: `You are an expert San Francisco Early Childhood and Preschool Advisor. Guide the family through identifying the best preschool programs by collecting:
-1. Child's age (years and months, e.g., 2.1 years = 25 months).
-2. Family size (parents and dependent children under 18) and approximate annual or monthly gross income to determine ELFA eligibility tier (0-110% AMI Free, 111-150% AMI Full Credit, 151-200% AMI Half Credit).
-3. Maximum out-of-pocket monthly budget (e.g. $0, $500, $1,200).
-4. Language immersion preference (Spanish, Mandarin, Cantonese, French, Japanese, etc.).
-5. Facility preference: Licensed Preschool Center vs Licensed Family Child Care Home.
-6. Schedule requirements: Full-time vs Part-time / Half-day / Specific days.
-7. Preferred San Francisco neighborhoods or zip codes.
-
-Once collected, use the 'get_smart_recommendations' or 'check_elfa_eligibility' tools to provide authoritative, vetted recommendations with net out-of-pocket costs calculated.`
+            text: buildFamilyIntakePrompt()
           }
         }
       ]
@@ -347,28 +338,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_elfa_rates_and_rules': {
         return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  ratesFY2627: ELFA_RATES_FY26_27,
-                  incomeEligibilityCeilings: ELFA_INCOME_TABLE_FY26_27,
-                  languages: LANGUAGE_MAP,
-                  financialAssistancePrograms: FINANCIAL_ASSISTANCE_MAP,
-                  rulesSummary: [
-                    'ELFA Free Tuition (0-110% AMI): 100% free enrollment; programs CANNOT charge any co-pays or fees.',
-                    'ELFA Full Tuition Credit (111-150% AMI): Monthly credit equal to 100% of DEC rate ($3,027 Infant, $2,306 Toddler, $2,115 Preschooler); programs may charge a co-pay equal to private tuition minus credit.',
-                    'ELFA Half Tuition Credit (151-200% AMI): Monthly credit equal to 50% of DEC rate ($1,514 Infant, $1,153 Toddler, $1,058 Preschooler); family pays remaining tuition.',
-                    'Over 200% AMI: Private pay, though some programs offer sliding scales or district TK for 4-year-olds.',
-                    'Age Groups: Infant = 0-24 months; Toddler = 24-36 months; Preschooler = 3-5 years (36-60+ months).'
-                  ]
-                },
-                null,
-                2
-              )
-            }
-          ]
+          content: [{ type: 'text', text: JSON.stringify(getElfaRatesAndRules(), null, 2) }]
         };
       }
 

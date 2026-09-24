@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getRecommendations } from '../src/recommendations.js';
+import { ELFA_SOURCE_LIST } from '../src/constants.js';
 import {
   checkClassroomAge,
   estimateOutOfPocket,
@@ -301,5 +302,58 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.equal(candidate.estimatedNetOutOfPocketMonthly, 0);
     assert.match(candidate.costEstimateBasis, /conditional/);
     assert.equal(candidate.rateStatus, 'unverified_blank_rates');
+  });
+});
+
+test('recommendations carry citations for follow-up questions', async (t) => {
+  await t.test('cite the DEC documents behind the credit amounts', async () => {
+    const result = await recommendForProvider({});
+    assert.deepEqual(result.subsidySources, ELFA_SOURCE_LIST);
+  });
+
+  await t.test('link every license to its public CCLD page', async () => {
+    const result = await recommendForProvider({
+      licenseNumber: '384004450',
+      licenseNumbers: ['384004450', '384004449']
+    });
+    assert.deepEqual(result.recommendations[0].ccldFacilityUrls, [
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004450',
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449'
+    ]);
+  });
+});
+
+test('daycare type preference reaches the provider search', async (t) => {
+  const run = async (options) => {
+    let searchFilter;
+    const result = await getRecommendations(
+      { childAgeYears: 2.1, targetBudgetMonthly: 5000, ...options },
+      {
+        search: async (filter) => {
+          searchFilter = filter;
+          return { items: [] };
+        },
+        getDetails: async () => null
+      }
+    );
+    return { result, searchFilter };
+  };
+
+  await t.test('searches both licensed settings when the family accepts either type', async () => {
+    const { result, searchFilter } = await run({ programType: 'any' });
+    assert.deepEqual(searchFilter.programType, ['licensedCenter', 'licensedFamilyChildCare']);
+    assert.equal(result.programTypePreference, 'any');
+  });
+
+  await t.test('searches only family child care homes when that is the answer', async () => {
+    const { result, searchFilter } = await run({ programType: 'licensedFamilyChildCare' });
+    assert.equal(searchFilter.programType, 'licensedFamilyChildCare');
+    assert.equal(result.programTypePreference, 'licensedFamilyChildCare');
+  });
+
+  await t.test('reports the licensed-center default when no preference is passed', async () => {
+    const { result, searchFilter } = await run({});
+    assert.equal(searchFilter.programType, 'licensedCenter');
+    assert.equal(result.programTypePreference, 'licensedCenter');
   });
 });

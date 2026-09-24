@@ -1,7 +1,7 @@
  // California Department of Social Services (CDSS)
  // Community Care Licensing Division (CCLD) Transparency API Client
 
-import { summarizeInspectionRecord } from './ccld-utils.js';
+import { ccldFacilityUrl, summarizeInspectionRecord } from './ccld-utils.js';
 
 const CCLD_DETAIL_URL = 'https://www.ccld.dss.ca.gov/transparencyapi/api/FacilityDetail';
 const CCLD_SEARCH_URL = 'https://www.ccld.dss.ca.gov/transparencyapi/api/FacilitySearch';
@@ -10,6 +10,7 @@ const cache = new Map();
 
 const unavailableRecord = (licenseNumber, verificationStatus, summary) => ({
   licenseNumber,
+  ccldFacilityUrl: ccldFacilityUrl(licenseNumber),
   verificationStatus,
   inspectionDataStatus: 'unavailable',
   status: null,
@@ -61,6 +62,7 @@ export async function getFacilityDetail(licenseNumber) {
     const result = {
       licenseNumber: cleanLic,
       facilityName: f.FACILITYNAME || '',
+      ccldFacilityUrl: ccldFacilityUrl(cleanLic),
       ...summarizeInspectionRecord(f)
     };
 

@@ -12,6 +12,7 @@ export async function runHeuristicVsJevComparison({
   preferredLanguage = 'Spanish',
   homeZipCode,
   homeLocation,
+  programType = 'licensedCenter',
   candidateCount = 5
 }) {
   const userLoc = homeZipCode || homeLocation;
@@ -25,6 +26,7 @@ export async function runHeuristicVsJevComparison({
     targetBudgetMonthly,
     preferredLanguage,
     homeZipCode: userLoc,
+    programType,
     maxResults: candidateCount
   });
 
@@ -34,7 +36,8 @@ export async function runHeuristicVsJevComparison({
     preferredLanguage,
     childAgeYears,
     childIsPottyTrained,
-    homeZipCode: userLoc
+    homeZipCode: userLoc,
+    programType
   });
 
   const heuristicJudgments = candidates.map((candidate, index) => {

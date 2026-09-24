@@ -1,8 +1,8 @@
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { calculateEligibility } from './eligibility.js';
-import { ELFA_RATES_FY26_27 } from './constants.js';
+import { ELFA_RATES_FY26_27, ELFA_SOURCE_LIST } from './constants.js';
 import { evaluateProximity } from './geo-utils.js';
-import { isVerifiedLicensedFacility } from './ccld-utils.js';
+import { ccldFacilityUrl, isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
   checkClassroomAge,
   detectRateBasis,
@@ -13,6 +13,10 @@ import {
   estimateOutOfPocket,
   rankCandidates
 } from './recommendation-utils.js';
+
+// "Either" means either licensed setting. License-exempt programs have no CCLD record to
+// verify, so they are left out rather than crowding licensed programs out of the batch.
+const LICENSED_PROGRAM_TYPES = ['licensedCenter', 'licensedFamilyChildCare'];
 
 function normalizeTier(tier) {
   if (tier === 'elfaHalfCredit' || tier === 'halfCreditELFA') return 'halfCreditELFA';
@@ -81,7 +85,7 @@ export async function getRecommendations(
   const subsidyAmount = subsidyForTier(activeTier, ageCategory);
   const searchFilter = {
     ageYears: Math.floor(childAgeYears),
-    programType,
+    programType: programType === 'any' ? LICENSED_PROGRAM_TYPES : programType,
     financialAid: activeTier !== 'privatePay' ? [activeTier] : undefined,
     language: preferredLanguage,
     schedule: schedule ? [schedule] : undefined,
@@ -201,6 +205,7 @@ export async function getRecommendations(
             : 'unknown'));
       const userLocation = homeZipCode || homeLocation;
       const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
+      const licenseNumbers = site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []);
 
       detailedCandidates.push({
         entityId: site.entityId,
@@ -238,7 +243,8 @@ export async function getRecommendations(
         schedule: site.schedule || [],
         description: site.description || '',
         licenseNumber: site.licenseNumber,
-        licenseNumbers: site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []),
+        licenseNumbers,
+        ccldFacilityUrls: licenseNumbers.map(ccldFacilityUrl).filter(Boolean),
         licenseStatus,
         ccldVerificationStatus,
         inspectionDataStatus,
@@ -332,9 +338,12 @@ export async function getRecommendations(
     monthlySubsidyDiscountBasis: activeTier === 'privatePay'
       ? 'No ELFA credit assumed.'
       : 'Potential DEC credit; applied to a provider only when its detail record lists the selected tier.',
+    // DEC documents behind the tier and credit amounts. Provider facts come from CareWait and CCLD.
+    subsidySources: ELFA_SOURCE_LIST,
     targetBudgetMonthly,
     homeLocation: userLoc || null,
     preferredLanguage: preferredLanguage || 'Any',
+    programTypePreference: programType,
     totalFound: detailedCandidates.length,
     recommendations: publicCandidates(withinBudget.slice(0, maxResults)),
     stretchOptions: publicCandidates(stretchOptions.slice(0, 3)),

@@ -43,7 +43,8 @@ export async function evaluateCandidatesWithJev(
     childAgeYears = 2.1,
     childIsPottyTrained,
     homeZipCode,
-    homeLocation
+    homeLocation,
+    programType = 'licensedCenter'
   } = userPreferences;
 
   const userLoc = homeZipCode || homeLocation;
@@ -92,7 +93,7 @@ export async function evaluateCandidatesWithJev(
         targetBudgetMonthly,
         preferredLanguage,
         homeLocation: userLoc || 'San Francisco',
-        wantsLicensedCenter: true,
+        preferredProgramType: programType,
         pottyTrained: childIsPottyTrained ?? null
       },
       candidate: {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getFacilityDetail } from '../src/ccld-client.js';
-import { summarizeInspectionRecord } from '../src/ccld-utils.js';
+import { ccldFacilityUrl, summarizeInspectionRecord } from '../src/ccld-utils.js';
 
 const completeZeroFindingsRecord = {
   STATUS: 'Licensed',
@@ -70,6 +70,34 @@ test('CCLD record quality distinguishes zero findings from missing findings', as
       assert.equal(result.status, null);
       assert.equal(result.rating, 'unknown');
       assert.equal(result.totalTypeA, null);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+test('CCLD facility page links', async (t) => {
+  await t.test('links a license number to its public CCLD page', () => {
+    assert.equal(ccldFacilityUrl('384004339'),
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004339');
+    assert.equal(ccldFacilityUrl(' 384004339 '),
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004339');
+  });
+
+  await t.test('never builds a link from a value that is not a license number', () => {
+    assert.equal(ccldFacilityUrl('fixture-license'), null);
+    assert.equal(ccldFacilityUrl('[object Object]'), null);
+    assert.equal(ccldFacilityUrl(null), null);
+  });
+
+  await t.test('keeps the page link when the CCLD lookup fails, so the family can check it', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('', { status: 503 });
+    try {
+      const result = await getFacilityDetail('384000001');
+      assert.equal(result.verificationStatus, 'unavailable');
+      assert.equal(result.ccldFacilityUrl,
+        'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384000001');
     } finally {
       globalThis.fetch = originalFetch;
     }

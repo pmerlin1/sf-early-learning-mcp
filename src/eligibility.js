@@ -1,11 +1,54 @@
-import { ELFA_INCOME_TABLE_FY26_27, ELFA_RATES_FY26_27 } from './constants.js';
+import {
+  ELFA_CREDIT_BASIS,
+  ELFA_INCOME_TABLE_FY26_27,
+  ELFA_RATES_FY26_27,
+  ELFA_SOURCE_LIST,
+  FINANCIAL_ASSISTANCE_MAP,
+  LANGUAGE_MAP,
+  LARGEST_ELFA_FAMILY_SIZE
+} from './constants.js';
+
+const usd = (amount) => '$' + amount.toLocaleString('en-US');
+
+/**
+ * Payload for the get_elfa_rates_and_rules tool: DEC's FY 2026-2027 rates, income ceilings,
+ * and rules, with the DEC documents they come from.
+ */
+export function getElfaRatesAndRules() {
+  const fullTime = ELFA_RATES_FY26_27.fullTimeMonthlyReimbursement;
+  const half = ELFA_RATES_FY26_27.halfCreditMonthly;
+  return {
+    ratesFY2627: ELFA_RATES_FY26_27,
+    incomeEligibilityCeilings: ELFA_INCOME_TABLE_FY26_27,
+    languages: LANGUAGE_MAP,
+    financialAssistancePrograms: FINANCIAL_ASSISTANCE_MAP,
+    rulesSummary: [
+      'ELFA Free Tuition (0-110% AMI): 100% free enrollment; programs CANNOT charge any co-pays or fees.',
+      'ELFA Full Tuition Credit (111-150% AMI): Monthly credit equal to 100% of DEC\'s full-time rate (' +
+        usd(fullTime.infant.rate) + ' Infant, ' + usd(fullTime.toddler.rate) + ' Toddler, ' +
+        usd(fullTime.preschool.rate) + ' Preschooler); programs may charge a co-pay equal to private tuition minus credit.',
+      'ELFA Half Tuition Credit (151-200% AMI): Monthly credit equal to 50% of DEC\'s full-time rate (' +
+        usd(half.infant) + ' Infant, ' + usd(half.toddler) + ' Toddler, ' + usd(half.preschool) +
+        ' Preschooler); family pays remaining tuition.',
+      'Part-time care: ' + ELFA_CREDIT_BASIS,
+      'Over 200% AMI: Private pay, though some programs offer sliding scales or district TK for 4-year-olds.',
+      'Age Groups: Infant = 0-24 months; Toddler = 24-36 months; Preschooler = 3-5 years (36-60+ months).',
+      'Income ceilings cover families of 1 to ' + LARGEST_ELFA_FAMILY_SIZE + '. DEC uses the 2-person ' +
+        'figures for 1-person families and repeats the 11-person ELFA figures for 12-person families.'
+    ],
+    sources: ELFA_SOURCE_LIST
+  };
+}
 
 export function calculateEligibility({ familySize, monthlyIncome, annualIncome, childAgeYears }) {
-  const size = Math.max(1, Math.min(8, Math.round(Number(familySize) || 3)));
+  const householdSize = Math.max(1, Math.round(Number(familySize) || 3));
+  // DEC publishes ceilings only up to LARGEST_ELFA_FAMILY_SIZE. A larger household is checked
+  // against that row and flagged, because its actual ceilings would be higher.
+  const size = Math.min(LARGEST_ELFA_FAMILY_SIZE, householdSize);
   const monthly = monthlyIncome !== undefined ? Number(monthlyIncome) : (Number(annualIncome) / 12);
   const annual = annualIncome !== undefined ? Number(annualIncome) : (Number(monthlyIncome) * 12);
 
-  const table = ELFA_INCOME_TABLE_FY26_27[size] || ELFA_INCOME_TABLE_FY26_27[8];
+  const table = ELFA_INCOME_TABLE_FY26_27[size];
 
   let tier = 'privatePay';
   let tierName = 'Private Pay (Over 200% AMI)';
@@ -26,12 +69,12 @@ export function calculateEligibility({ familySize, monthlyIncome, annualIncome, 
     tier = 'elfaFullCredit';
     tierName = 'ELFA Full Tuition Credit (111-150% AMI)';
     copayAllowed = true;
-    explanation = `Your monthly income of $${monthly.toFixed(0)} is between 111% and 150% AMI (up to $${table.fullMonthly}/mo for a family of ${size}). You qualify for a monthly credit equal to 100% of the DEC reimbursement rate. Programs may charge a co-pay if private tuition exceeds the credit.`;
+    explanation = `Your monthly income of $${monthly.toFixed(0)} is between 111% and 150% AMI (up to $${table.fullMonthly}/mo for a family of ${size}). You qualify for a monthly credit equal to 100% of DEC's full-time reimbursement rate for your child's age group, for full-time or part-time care. Programs may charge a co-pay if private tuition exceeds the credit.`;
   } else if (monthly <= table.halfMonthly) {
     tier = 'elfaHalfCredit';
     tierName = 'ELFA Half Tuition Credit (151-200% AMI)';
     copayAllowed = true;
-    explanation = `Your monthly income of $${monthly.toFixed(0)} is between 151% and 200% AMI (up to $${table.halfMonthly}/mo for a family of ${size}). You qualify for a monthly discount equal to 50% of the DEC reimbursement rate. You pay the remaining balance.`;
+    explanation = `Your monthly income of $${monthly.toFixed(0)} is between 151% and 200% AMI (up to $${table.halfMonthly}/mo for a family of ${size}). You qualify for a monthly credit equal to 50% of DEC's full-time reimbursement rate for your child's age group, for full-time or part-time care. You pay the remaining balance.`;
   } else {
     tier = 'privatePay';
     tierName = 'Over 200% AMI (Private Pay)';
@@ -71,7 +114,13 @@ export function calculateEligibility({ familySize, monthlyIncome, annualIncome, 
   }
 
   return {
-    familySize: size,
+    familySize: householdSize,
+    thresholdFamilySize: size,
+    ...(householdSize > size ? {
+      familySizeNote: 'DEC publishes income ceilings for families of up to ' + size + ' people. ' +
+        'This family of ' + householdSize + ' was checked against the ' + size + '-person ceilings, ' +
+        'which can understate its eligibility; confirm the tier with DEC or a resource and referral agency.'
+    } : {}),
     monthlyIncome: monthly,
     annualIncome: annual,
     childAgeYears: childAgeYears !== undefined ? Number(childAgeYears) : null,
@@ -82,11 +131,13 @@ export function calculateEligibility({ familySize, monthlyIncome, annualIncome, 
     monthlyCreditAmount,
     fullReimbursementRate: fullMonthlyReimbursement,
     partTimeReimbursementRate: partTimeMonthlyReimbursement,
+    creditBasis: ELFA_CREDIT_BASIS,
     explanation,
     thresholds: {
       freeTuitionMonthlyCeiling: table.freeMonthly,
       fullCreditMonthlyCeiling: table.fullMonthly,
       halfCreditMonthlyCeiling: table.halfMonthly
-    }
+    },
+    sources: ELFA_SOURCE_LIST
   };
 }
