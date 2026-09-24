@@ -139,7 +139,7 @@ Add to your `claude_desktop_config.json`:
 Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-paste prompts:
 
 ### 1. The Intake Interview
-> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend preschools based on my budget and language preference."*
+> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend programs. Ask potty-training status and licensed center vs family child care home in the first question round, along with age, family size, neighborhood, and schedule."*
 
 ### 2. Low Out-of-Pocket Language Immersion
 > *"We have the ELFA Half Tuition Credit for our 2.1-year-old toddler. Can you find licensed preschool centers (not home-based) offering Spanish or Cantonese/Mandarin immersion where our out-of-pocket tuition is under $400/month?"*

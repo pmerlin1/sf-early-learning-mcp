@@ -49,14 +49,18 @@ Apply an ELFA credit only when the provider detail record lists the family's tie
 
 ## 2. Family Intake & Toddler Requirements Workflow
 
-When helping a family, follow this structured intake:
+Use the canonical intake in `src/family-intake.js`. The first `Question()` call **must** include all first-round fields together: child age, **potty training**, family size, neighborhood/zip, schedule, and **daycare type** (licensed center vs family child care home vs either). Do not start CareWait search or `get_smart_recommendations` until those six are answered. Never drop potty training or daycare type from round one just because the family already gave age, neighborhood, or schedule.
+
+Follow-up round if still missing: income, monthly budget, language preference.
+
 1. **Child's exact age**: Years and months (determines Infant vs. Toddler vs. Preschooler rate).
-2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear.
+2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear. Pass `childIsPottyTrained` into `get_smart_recommendations`.
 3. **Family composition & income**: Total members in household and gross pre-tax income to determine ELFA tier.
-4. **Budget constraints**: Maximum monthly out-of-pocket target (e.g., $0, $300, $1,200).
-5. **Environment preference**: Dedicated Licensed Child Care Center vs. Licensed Family Child Care Home (in-home daycare).
-6. **Language preference**: Language immersion (Spanish, Cantonese, Mandarin, Japanese, etc.) vs. dual-language support.
-7. **Schedule preference**: Full-time vs. Part-time / specific days.
+4. **Neighborhood / zip**: Home zip or preferred SF neighborhood.
+5. **Budget constraints**: Maximum monthly out-of-pocket target (e.g., $0, $300, $1,200).
+6. **Environment / daycare type**: Dedicated Licensed Child Care Center vs. Licensed Family Child Care Home (in-home daycare) vs either. Pass `programType` into search and recommendation tools.
+7. **Language preference**: Language immersion (Spanish, Cantonese, Mandarin, Japanese, etc.) vs. dual-language support.
+8. **Schedule preference**: Full-time vs. Part-time / specific days.
 
 ---
 

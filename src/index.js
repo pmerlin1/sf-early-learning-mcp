@@ -15,6 +15,7 @@ import { getRecommendations } from './recommendations.js';
 import { evaluateCandidatesWithJev } from './jev-eval.js';
 import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
+import { buildFamilyIntakePrompt } from './family-intake.js';
 import {
   ELFA_RATES_FY26_27,
   ELFA_INCOME_TABLE_FY26_27,
@@ -278,7 +279,7 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
       {
         name: 'family_intake_interview',
         description:
-          'A structured guide for interviewing a San Francisco family to discover their preschool needs, budget, language preferences, and ELFA subsidy eligibility.'
+          'A structured guide for interviewing a San Francisco family. The first question round must include child age, potty training, family size, neighborhood, schedule, and daycare type (licensed center vs family child care home).'
       }
     ]
   };
@@ -293,16 +294,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           role: 'user',
           content: {
             type: 'text',
-            text: `You are an expert San Francisco Early Childhood and Preschool Advisor. Guide the family through identifying the best preschool programs by collecting:
-1. Child's age (years and months, e.g., 2.1 years = 25 months).
-2. Family size (parents and dependent children under 18) and approximate annual or monthly gross income to determine ELFA eligibility tier (0-110% AMI Free, 111-150% AMI Full Credit, 151-200% AMI Half Credit).
-3. Maximum out-of-pocket monthly budget (e.g. $0, $500, $1,200).
-4. Language immersion preference (Spanish, Mandarin, Cantonese, French, Japanese, etc.).
-5. Facility preference: Licensed Preschool Center vs Licensed Family Child Care Home.
-6. Schedule requirements: Full-time vs Part-time / Half-day / Specific days.
-7. Preferred San Francisco neighborhoods or zip codes.
-
-Once collected, use the 'get_smart_recommendations' or 'check_elfa_eligibility' tools to provide authoritative, vetted recommendations with net out-of-pocket costs calculated.`
+            text: buildFamilyIntakePrompt()
           }
         }
       ]
