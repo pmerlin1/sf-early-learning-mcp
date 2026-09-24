@@ -77,7 +77,7 @@ Providers can hold more than one CCLD license (for example, separate infant and 
 
 ## 4. Decision Model & Meta Composite Scoring (TypeSafe Jev)
 
-Use code-enforced gates for current license status, exact classroom age fit, verified price, provider-confirmed subsidy tier, and required diaper-change support. A child explicitly marked potty trained does not need the diapering gate; if that status is unknown, do not infer it from age. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
+Use code-enforced gates for current license status, exact classroom age fit, verified price, provider-confirmed subsidy tier, and required diaper-change support. A child explicitly marked potty trained does not need the diapering gate. The gate applies when the family says the child is not potty trained (toddler or preschool age) and when a toddler's status is unknown. An unknown status for a preschool-age child is not gated, so always ask rather than infer it from age. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
 
 Use `get_smart_recommendations` to calculate net cost from a published rate and the applicable credit. A Free Tuition estimate of $0 is conditional on confirmed ELFA eligibility and an available funded enrollment slot. Do not claim that Jev eliminates factual uncertainty: its typed scores and choice probabilities are model judgments, not substitutes for official records.
 

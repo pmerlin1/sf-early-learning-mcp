@@ -205,6 +205,41 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.equal(toiletTrained.recommendations[0].diaperingFitStatus, 'not_required');
   });
 
+  await t.test('requires diaper evidence for a preschool-age child who is not potty trained', async () => {
+    const preschoolSite = {
+      programsOffered: [{ name: 'Preschool', minAgeMonths: 36, maxAgeMonths: 60 }],
+      monthlyRates: { preschool: { min: 1383, max: 1383 } },
+      diaperingStatus: 'unknown',
+      diaperingAccommodated: false
+    };
+    const preschooler = { childAgeYears: 3.5, targetBudgetMonthly: 1000 };
+
+    const notTrained = await recommendForProvider(preschoolSite, {
+      ...preschooler,
+      childIsPottyTrained: false
+    });
+    assert.equal(notTrained.ageCategory, 'preschool');
+    assert.equal(notTrained.recommendations.length, 0);
+    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingFitStatus, 'unknown');
+    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingEvidenceScore, 25);
+
+    const trained = await recommendForProvider(preschoolSite, {
+      ...preschooler,
+      childIsPottyTrained: true
+    });
+    assert.equal(trained.recommendations.length, 1);
+    assert.equal(trained.recommendations[0].diaperingFitStatus, 'not_required');
+    assert.equal(trained.recommendations[0].diaperingEvidenceScore, null);
+
+    const confirmedDiapering = await recommendForProvider({
+      ...preschoolSite,
+      diaperingStatus: 'confirmed',
+      diaperingAccommodated: true
+    }, { ...preschooler, childIsPottyTrained: false });
+    assert.equal(confirmedDiapering.recommendations.length, 1);
+    assert.equal(confirmedDiapering.recommendations[0].diaperingFitStatus, 'confirmed');
+  });
+
   await t.test('uses the conservative posted rate and requires a complete CCLD record', async () => {
     const result = await recommendForProvider({});
     assert.equal(result.recommendations.length, 1);

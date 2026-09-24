@@ -178,7 +178,14 @@ export async function getRecommendations(
         supportEvidence.pottyTrainingStatus === 'confirmed'
         ? 'confirmed'
         : 'unknown';
-      const diaperingFitStatus = ageCategory !== 'toddler' || childIsPottyTrained === true
+      // Diaper-change evidence is required whenever the family says the child is not potty
+      // trained, and for toddlers whose status is unknown; toilet training is never assumed
+      // from a preschool age when the family has said otherwise. Infant care is not gated here.
+      const needsDiaperChanges = ageCategory === 'toddler'
+        ? childIsPottyTrained !== true
+        : (ageCategory === 'preschool' && childIsPottyTrained === false);
+      const reportCareEvidence = ageCategory === 'toddler' || needsDiaperChanges;
+      const diaperingFitStatus = !needsDiaperChanges
         ? 'not_required'
         : (diaperingStatus === 'confirmed'
           ? 'confirmed'
@@ -232,10 +239,10 @@ export async function getRecommendations(
         diaperingStatus,
         pottyTrainingStatus,
         diaperingFitStatus,
-        diaperingEvidenceScore: ageCategory === 'toddler'
+        diaperingEvidenceScore: reportCareEvidence
           ? (site.diaperingEvidenceScore ?? (diaperingStatus === 'confirmed' ? 100 : 25))
           : null,
-        pottyTrainingEvidenceScore: ageCategory === 'toddler'
+        pottyTrainingEvidenceScore: reportCareEvidence
           ? (site.pottyTrainingEvidenceScore ?? (pottyTrainingStatus === 'confirmed' ? 100 : 25))
           : null,
         diaperingEvidenceSource: site.diaperingEvidenceSource ||
