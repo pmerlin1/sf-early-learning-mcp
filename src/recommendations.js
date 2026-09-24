@@ -2,7 +2,7 @@ import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { calculateEligibility } from './eligibility.js';
 import { ELFA_RATES_FY26_27, ELFA_SOURCE_LIST } from './constants.js';
 import { evaluateProximity } from './geo-utils.js';
-import { isVerifiedLicensedFacility } from './ccld-utils.js';
+import { ccldFacilityUrl, isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
   checkClassroomAge,
   detectRateBasis,
@@ -205,6 +205,7 @@ export async function getRecommendations(
             : 'unknown'));
       const userLocation = homeZipCode || homeLocation;
       const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
+      const licenseNumbers = site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []);
 
       detailedCandidates.push({
         entityId: site.entityId,
@@ -242,7 +243,8 @@ export async function getRecommendations(
         schedule: site.schedule || [],
         description: site.description || '',
         licenseNumber: site.licenseNumber,
-        licenseNumbers: site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []),
+        licenseNumbers,
+        ccldFacilityUrls: licenseNumbers.map(ccldFacilityUrl).filter(Boolean),
         licenseStatus,
         ccldVerificationStatus,
         inspectionDataStatus,

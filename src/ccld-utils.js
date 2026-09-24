@@ -1,3 +1,14 @@
+const CCLD_FACILITY_PAGE = 'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/';
+
+/**
+ * Public CCLD page for a facility, the same page CareWait links as a license's `licenseUrl`.
+ * Returns null unless the license number is a plain digit string.
+ */
+export function ccldFacilityUrl(licenseNumber) {
+  const value = String(licenseNumber ?? '').trim();
+  return /^\d{6,12}$/.test(value) ? CCLD_FACILITY_PAGE + value : null;
+}
+
 export function summarizeInspectionRecord(facility) {
   const count = (value) => {
     if (value === null || value === undefined || value === '') return null;

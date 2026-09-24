@@ -182,6 +182,12 @@ test('providers with several CCLD licenses', async (t) => {
       assert.equal(site.ccldInspections.length, 2);
       assert.equal(site.ccldInspection.rating, 'caution');
       assert.equal(site.ccldInspection.licenseNumber, '384004449');
+      assert.deepEqual(site.ccldInspections.map((record) => record.ccldFacilityUrl), [
+        'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004450',
+        'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449'
+      ]);
+      assert.equal(site.ccldInspection.ccldFacilityUrl,
+        'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449');
     } finally {
       globalThis.fetch = originalFetch;
     }

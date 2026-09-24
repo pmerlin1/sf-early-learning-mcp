@@ -305,9 +305,22 @@ test('recommendation output quarantines unverified facts', async (t) => {
   });
 });
 
-test('recommendations cite the DEC documents behind the credit amounts', async () => {
-  const result = await recommendForProvider({});
-  assert.deepEqual(result.subsidySources, ELFA_SOURCE_LIST);
+test('recommendations carry citations for follow-up questions', async (t) => {
+  await t.test('cite the DEC documents behind the credit amounts', async () => {
+    const result = await recommendForProvider({});
+    assert.deepEqual(result.subsidySources, ELFA_SOURCE_LIST);
+  });
+
+  await t.test('link every license to its public CCLD page', async () => {
+    const result = await recommendForProvider({
+      licenseNumber: '384004450',
+      licenseNumbers: ['384004450', '384004449']
+    });
+    assert.deepEqual(result.recommendations[0].ccldFacilityUrls, [
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004450',
+      'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449'
+    ]);
+  });
 });
 
 test('daycare type preference reaches the provider search', async (t) => {

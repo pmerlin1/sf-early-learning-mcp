@@ -56,7 +56,7 @@ Compares the local rule-based budget heuristic with TypeSafe Jev System One. Req
 Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings (families of 1–12), and program rules, with the DEC source documents in `sources`.
 
 ### 7. `get_state_licensing_record`
-Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number.
+Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number. Each record includes `ccldFacilityUrl`, the facility's public CCLD page, for citation.
 
 ## MCP Prompt: `family_intake_interview`
 

@@ -86,7 +86,7 @@ Always cross-reference facilities with the official California Community Care Li
 * **Caution**: any Type A citation, any substantiated allegation, or a status other than Licensed. Flag these explicitly for parents before recommending.
 * **Unknown**: missing or incomplete CCLD data. This is never a clean record.
 
-Do not describe citations as routine, minor, or resolved unless the CCLD report text says so; link the facility's CCLD page instead.
+Do not describe citations as routine, minor, or resolved unless the CCLD report text says so; link the facility's CCLD page instead. Every licensing record includes that page as `ccldFacilityUrl`, and `get_smart_recommendations` lists one per license in `ccldFacilityUrls`; cite those rather than constructing a link.
 
 Providers can hold more than one CCLD license (for example, separate infant and preschool licenses). `get_childcare_details` and `get_smart_recommendations` check every license on the CareWait profile, report the most severe finding, and treat the provider as unverified if any license record is missing or incomplete. When calling `get_state_licensing_record` directly, check each number in `licenseNumbers`.
 
