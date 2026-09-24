@@ -49,18 +49,22 @@ Apply an ELFA credit only when the provider detail record lists the family's tie
 
 ## 2. Family Intake & Toddler Requirements Workflow
 
-Use the canonical intake in `src/family-intake.js`. The first `Question()` call **must** include all first-round fields together: child age, **potty training**, family size, neighborhood/zip, schedule, and **daycare type** (licensed center vs family child care home vs either). Do not start CareWait search or `get_smart_recommendations` until those six are answered. Never drop potty training or daycare type from round one just because the family already gave age, neighborhood, or schedule.
+Ask in two rounds. The `sf-early-learning` MCP prompt `family_intake_interview` renders the same questions with answer-to-parameter mappings and the income ranges for each household size.
 
-Follow-up round if still missing: income, monthly budget, language preference.
+**Round 1: a single `Question()` call containing every first-round question the family has not already answered.** Potty training and daycare type are the easiest to skip; never leave them for later. Do not search CareWait or call `get_smart_recommendations` until all six are answered.
 
-1. **Child's exact age**: Years and months (determines Infant vs. Toddler vs. Preschooler rate).
-2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear. Pass `childIsPottyTrained` into `get_smart_recommendations`.
-3. **Family composition & income**: Total members in household and gross pre-tax income to determine ELFA tier.
-4. **Neighborhood / zip**: Home zip or preferred SF neighborhood.
-5. **Budget constraints**: Maximum monthly out-of-pocket target (e.g., $0, $300, $1,200).
-6. **Environment / daycare type**: Dedicated Licensed Child Care Center vs. Licensed Family Child Care Home (in-home daycare) vs either. Pass `programType` into search and recommendation tools.
-7. **Language preference**: Language immersion (Spanish, Cantonese, Mandarin, Japanese, etc.) vs. dual-language support.
-8. **Schedule preference**: Full-time vs. Part-time / specific days.
+1. **Child's exact age**: Years and months. This determines the Infant, Toddler, or Preschooler rate, and classroom fit is checked in months. If the family picks an age band, ask for the months.
+2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear. Pass `childIsPottyTrained: false` or `true`; omit it when the answer is unknown.
+3. **Family size**: Parents or caregivers plus dependent children under 18.
+4. **Neighborhood / zip**: Pass a 5-digit San Francisco zip code as `homeZipCode`.
+5. **Schedule**: Full-time vs. part-time. Net-cost estimates use full-time ELFA credit amounts, so confirm part-time credits with the provider.
+6. **Daycare type**: Licensed child care center, licensed family child care home (in-home daycare), or either. Always pass `programType` (`licensedCenter`, `licensedFamilyChildCare`, or `any`); omitting it limits results to centers.
+
+**Round 2: a single `Question()` call for whatever is still missing.**
+
+7. **Household income**: Gross pre-tax income. Offer dollar ranges for the family's household size (from `get_elfa_rates_and_rules`), never AMI percentages, and confirm the tier with `check_elfa_eligibility`.
+8. **Budget**: Maximum monthly out-of-pocket target (e.g., $0, $500, $1,200). If it is omitted, `get_smart_recommendations` assumes $1,200.
+9. **Language preference**: Language immersion (Spanish, Cantonese, Mandarin, Japanese, etc.) vs. dual-language support.
 
 ---
 

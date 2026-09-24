@@ -45,7 +45,7 @@ Queries the live SF CareWait database with rich filters:
 Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
-All-in-one recommendation engine: takes budget, language, schedule, benefit tier, and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of preschool centers. Missing provider aid data never becomes an assumed credit.
+All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit.
 
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
@@ -55,6 +55,15 @@ Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate 
 
 ### 7. `get_state_licensing_record`
 Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number.
+
+## MCP Prompt: `family_intake_interview`
+
+A two-round family interview generated from `src/family-intake.js`:
+
+1. **First round, asked together:** child age in years and months, potty training, family size, neighborhood or zip, schedule, and daycare type (licensed center, family child care home, or either).
+2. **Follow-up round:** household income, monthly budget, and language preference.
+
+Each answer is mapped to a tool parameter. For example, "not sure" about potty training omits `childIsPottyTrained`, and "either" daycare type becomes `programType: "any"`. Income is offered as dollar ranges for the family's household size, taken from the FY 2026–2027 ceilings, never as AMI percentages.
 
 ---
 
@@ -139,7 +148,7 @@ Add to your `claude_desktop_config.json`:
 Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-paste prompts:
 
 ### 1. The Intake Interview
-> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend programs. Ask potty-training status and licensed center vs family child care home in the first question round, along with age, family size, neighborhood, and schedule."*
+> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend preschools based on my budget and language preference."*
 
 ### 2. Low Out-of-Pocket Language Immersion
 > *"We have the ELFA Half Tuition Credit for our 2.1-year-old toddler. Can you find licensed preschool centers (not home-based) offering Spanish or Cantonese/Mandarin immersion where our out-of-pocket tuition is under $400/month?"*
