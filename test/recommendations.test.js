@@ -186,6 +186,19 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.equal(result.unverifiedRateCandidates[0].estimatedNetOutOfPocketMonthly, null);
   });
 
+  await t.test('reports a missing private-pay rate, not an ELFA conflict, at post-credit providers', async () => {
+    const result = await recommendForProvider({
+      rateNotes: 'Tuition is the amount after any ELFA tuition credit offset.',
+      monthlyRates: { toddler: { min: 0, max: 1153 } }
+    }, { benefitTier: 'privatePay' });
+    const option = result.unverifiedRateCandidates[0];
+    assert.equal(result.recommendations.length, 0);
+    assert.equal(option.rateStatus, 'unverified_private_pay_rate');
+    assert.equal(option.estimatedNetOutOfPocketMonthly, null);
+    assert.match(option.costEstimateBasis, /private-pay tuition is not published/);
+    assert.doesNotMatch(option.costEstimateBasis, /selected ELFA tier/);
+  });
+
   await t.test('requires diaper evidence only when the child needs diaper changes', async () => {
     const site = {
       diaperingStatus: 'unknown',

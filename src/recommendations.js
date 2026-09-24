@@ -129,6 +129,9 @@ export async function getRecommendations(
       );
       const subsidyEligible = subsidyEligibilityStatus === 'eligible';
       const postCreditConflict = postCredit && !subsidyEligible;
+      // A private-pay family has no ELFA tier to conflict with: the provider simply does not
+      // publish the tuition that family would pay.
+      const privatePayRateUnpublished = postCreditConflict && activeTier === 'privatePay';
       const hasCompleteRate = isRateSafeForBudget(rate.status) && !postCreditConflict;
       const freeTier = activeTier === 'freeTuitionELFA' && subsidyEligible;
       const appliedSubsidyAmount = subsidyEligible && !postCredit && !freeTier
@@ -141,13 +144,17 @@ export async function getRecommendations(
             min: null,
             max: null,
             estimate: null,
-            basis: 'provider_aid_and_post_credit_rate_conflict'
+            basis: privatePayRateUnpublished
+              ? 'private_pay_rate_not_published'
+              : 'provider_aid_and_post_credit_rate_conflict'
           }
         : estimateOutOfPocket(rate, appliedSubsidyAmount, freeTier, rateBasis);
       const netMonthly = costEstimate.estimate;
       let costEstimateBasis;
       if (freeTier) {
         costEstimateBasis = 'ELFA free-tuition copay, conditional on an approved award and available funded slot';
+      } else if (privatePayRateUnpublished) {
+        costEstimateBasis = 'Provider publishes only amounts families pay after the ELFA credit, so its private-pay tuition is not published; verify the rate with the provider';
       } else if (postCreditConflict) {
         costEstimateBasis = 'Provider rate notes mention an ELFA-adjusted amount, but this provider does not confirm the selected ELFA tier; verify the applicable rate';
       } else if (!hasCompleteRate) {
@@ -224,7 +231,9 @@ export async function getRecommendations(
         estimatedNetOutOfPocketMonthlyMin: costEstimate.min,
         estimatedNetOutOfPocketMonthlyMax: costEstimate.max,
         costEstimateBasis,
-        rateStatus: postCreditConflict ? 'conflicting_rate_and_aid_data' : rate.status,
+        rateStatus: privatePayRateUnpublished
+          ? 'unverified_private_pay_rate'
+          : (postCreditConflict ? 'conflicting_rate_and_aid_data' : rate.status),
         rateNotes: site.rateNotes || '',
         schedule: site.schedule || [],
         description: site.description || '',
