@@ -98,7 +98,7 @@ CareWait's `100` / `25` accommodation evidence values are ordinal signals, not l
 - Node.js >= 20.0.0
 
 ```bash
-git clone https://github.com/your-username/sf-early-learning-mcp.git
+git clone https://github.com/pmerlin1/sf-early-learning-mcp.git
 cd sf-early-learning-mcp
 npm install
 npm test
