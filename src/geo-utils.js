@@ -126,3 +126,21 @@ export function evaluateProximity(facilityZip, facilityCoords, homeLocation) {
     isImmediateNeighborhood: sameZip || dist <= 1.2
   };
 }
+
+/**
+ * Returns San Francisco zip codes within a specified radius (in statute miles)
+ * of a given home zip code or coordinate pair, sorted by distance.
+ */
+export function getNearbyZipCodes(homeLocation, maxDistanceMiles = 3.5) {
+  const homeCoords = resolveCoordinates(homeLocation);
+  if (!homeCoords) return null;
+
+  return Object.entries(SF_ZIP_CENTROIDS)
+    .map(([zip, data]) => {
+      const dist = haversineDistanceMiles(homeCoords.lat, homeCoords.lon, data.lat, data.lon);
+      return { zip: Number(zip), dist };
+    })
+    .filter(({ dist }) => dist !== null && dist <= maxDistanceMiles)
+    .sort((a, b) => a.dist - b.dist)
+    .map(({ zip }) => zip);
+}

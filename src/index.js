@@ -139,7 +139,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             childIsPottyTrained: {
               type: 'boolean',
-              description: 'Optional. Whether this child is independently potty trained; omit if unknown. If false (toddler or preschool age), or omitted for a toddler, diaper-change support must be explicitly documented to qualify as verified.'
+              description: 'Optional. Whether this child is independently potty trained; omit if unknown. Diapering accommodation is tracked for parent reference and tour checklists, but does not gate verified recommendations.'
             },
             familySize: {
               type: 'number',

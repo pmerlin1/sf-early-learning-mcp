@@ -200,7 +200,7 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.doesNotMatch(option.costEstimateBasis, /selected ELFA tier/);
   });
 
-  await t.test('requires diaper evidence only when the child needs diaper changes', async () => {
+  await t.test('tracks diaper evidence informationally without gating recommendations', async () => {
     const site = {
       diaperingStatus: 'unknown',
       diaperingAccommodated: false,
@@ -209,17 +209,17 @@ test('recommendation output quarantines unverified facts', async (t) => {
       pottyTrainingEvidenceSource: 'CareWait: pottyTrainingProvided'
     };
     const needsDiapers = await recommendForProvider(site);
-    assert.equal(needsDiapers.recommendations.length, 0);
-    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].diaperingFitStatus,
+    assert.equal(needsDiapers.recommendations.length, 1);
+    assert.equal(needsDiapers.recommendations[0].diaperingFitStatus,
       'potty_training_only_diapering_unconfirmed');
-    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].pottyTrainingStatus, 'confirmed');
+    assert.equal(needsDiapers.recommendations[0].pottyTrainingStatus, 'confirmed');
 
     const toiletTrained = await recommendForProvider(site, { childIsPottyTrained: true });
     assert.equal(toiletTrained.recommendations.length, 1);
     assert.equal(toiletTrained.recommendations[0].diaperingFitStatus, 'not_required');
   });
 
-  await t.test('requires diaper evidence for a preschool-age child who is not potty trained', async () => {
+  await t.test('reports diapering status for a preschool-age child who is not potty trained', async () => {
     const preschoolSite = {
       programsOffered: [{ name: 'Preschool', minAgeMonths: 36, maxAgeMonths: 60 }],
       monthlyRates: { preschool: { min: 1383, max: 1383 } },
@@ -233,9 +233,9 @@ test('recommendation output quarantines unverified facts', async (t) => {
       childIsPottyTrained: false
     });
     assert.equal(notTrained.ageCategory, 'preschool');
-    assert.equal(notTrained.recommendations.length, 0);
-    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingFitStatus, 'unknown');
-    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingEvidenceScore, 25);
+    assert.equal(notTrained.recommendations.length, 1);
+    assert.equal(notTrained.recommendations[0].diaperingFitStatus, 'unknown');
+    assert.equal(notTrained.recommendations[0].diaperingEvidenceScore, 25);
 
     const trained = await recommendForProvider(preschoolSite, {
       ...preschooler,

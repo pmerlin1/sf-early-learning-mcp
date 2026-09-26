@@ -77,12 +77,12 @@ Hard factual checks stay in application code. Jev supplies model judgments for t
    - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean. Providers with several licenses (e.g. separate infant and preschool licenses) are checked on every license, and the most severe finding is reported.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
-   - Published rate, provider-confirmed ELFA tier, and required toddler diaper-change evidence before placement in verified recommendations. Potty-training support is tracked separately from diaper changes. A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
-   - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
+    - Published rate and provider-confirmed ELFA tier before placement in verified recommendations. Diapering accommodation is tracked as an informational reference and inquiry checklist for parents, but is excluded from code-enforced gating and Jev composite scoring because CareWait provider records rarely populate the field (<2%). A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
+    - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
 
 2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
-   - With a location: **Location 25%, Safety 25%, Budget 25%, Immersion 15%, Diapering 10%**.
-   - Without a location: **Safety 35%, Budget 30%, Immersion 25%, Diapering 10%**.
+   - With a location: **Location 30%, Safety 30%, Budget 25%, Immersion 15%** (diapering excluded).
+   - Without a location: **Safety 40%, Budget 35%, Immersion 25%** (diapering excluded).
 
 3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's available score answers; if answers are missing, the composite is reweighted over scored dimensions and includes a coverage value and missing-dimension list. The choice is a separate model judgment, not a verdict derived mechanically from that composite.
 

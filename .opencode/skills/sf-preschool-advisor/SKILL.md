@@ -63,7 +63,7 @@ Ask in two rounds. The `sf-early-learning` MCP prompt `family_intake_interview` 
 **Round 1: a single `Question()` call containing every first-round question the family has not already answered.** Potty training and daycare type are the easiest to skip; never leave them for later. Do not search CareWait or call `get_smart_recommendations` until all six are answered.
 
 1. **Child's exact age**: Years and months. This determines the Infant, Toddler, or Preschooler rate, and classroom fit is checked in months. If the family picks an age band, ask for the months.
-2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear. Pass `childIsPottyTrained: false` or `true`; omit it when the answer is unknown.
+2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. Diapering accommodation is tracked as an informational checklist item for parent tours; it does **not** gate preschool options or eliminate verified facilities, because CareWait provider records rarely populate the diapering flag (<2% of listings). Pass `childIsPottyTrained: false` or `true`; omit it when the answer is unknown.
 3. **Family size**: Parents or caregivers plus dependent children under 18.
 4. **Neighborhood / zip**: Pass a 5-digit San Francisco zip code as `homeZipCode`.
 5. **Schedule**: Full-time vs. part-time. This filters programs; it does not change the ELFA credit (see "Part-time care gets the same credit" above).
@@ -94,7 +94,7 @@ Providers can hold more than one CCLD license (for example, separate infant and 
 
 ## 4. Decision Model & Meta Composite Scoring (TypeSafe Jev)
 
-Use code-enforced gates for current license status, exact classroom age fit, verified price, provider-confirmed subsidy tier, and required diaper-change support. A child explicitly marked potty trained does not need the diapering gate. The gate applies when the family says the child is not potty trained (toddler or preschool age) and when a toddler's status is unknown. An unknown status for a preschool-age child is not gated, so always ask rather than infer it from age. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
+Use code-enforced gates for current license status, exact classroom age fit, verified price, and provider-confirmed subsidy tier. Diapering accommodation is tracked informationally for parents rather than gating results, because <2% of provider records populate the accommodation flag. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
 
 Use `get_smart_recommendations` to calculate net cost from a published rate and the applicable credit. A Free Tuition estimate of $0 is conditional on confirmed ELFA eligibility and an available funded enrollment slot. Do not claim that Jev eliminates factual uncertainty: its typed scores and choice probabilities are model judgments, not substitutes for official records.
 
@@ -102,6 +102,35 @@ Use `compare_heuristic_vs_jev` for the rule-based budget heuristic versus a live
 
 CareWait's 100/25 evidence values are ordinal evidence signals, not probabilities: 100 means the matching accommodation is explicitly listed; 25 means the listing does not confirm it. Diaper changes and potty-training support have separate signals. A 100 for potty-training support must not be shown as 100 for diaper changes. Jev receives those source facts; a missing Jev score is not a zero and its composite must show the coverage used.
 
-**Composite scoring weights**:
-* With a family location: Location **25%**, Safety **25%**, Budget **25%**, Immersion **15%**, Diapering **10%**.
-* Without a family location: Safety **35%**, Budget **30%**, Immersion **25%**, Diapering **10%**.
+**Composite scoring weights (Diapering excluded from composite)**:
+* With a family location: Location **30%**, Safety **30%**, Budget **25%**, Immersion **15%**.
+* Without a family location: Safety **40%**, Budget **35%**, Immersion **25%**.
+
+---
+
+## 5. Mandatory Response Presentation: Recommendation Table
+
+Whenever presenting preschool or child care options to a family, **ALWAYS present the options in a clear, formatted Markdown table** with the following required columns:
+
+| Name | Address / Distance | Language | CCLD Record | Cost (Gross & Net Out-of-Pocket) |
+| :--- | :--- | :--- | :--- | :--- |
+
+* **Name**: Provider name linked to its official CCLD facility record URL (`ccldFacilityUrl`).
+* **Address / Distance**: Full street address and calculated driving/commute distance in miles from the family's home zip code.
+* **Language**: Primary language instruction, dual-language, or immersion track (e.g. Spanish, Mandarin, Cantonese, Japanese, English).
+* **CCLD Record**: Verified safety rating (Clear / Pristine, Minor Type B findings, or Caution with Type A citation counts).
+* **Cost**: Published monthly gross tuition, monthly ELFA credit amount, and calculated net monthly out-of-pocket cost (or note if rates are unverified / unpublished).
+
+If some candidates have unpublished rates, group them in a second table under **"Programs Requiring Tuition Verification"** so the parent gets a complete view of all neighborhood ELFA providers without losing rate accuracy.
+
+---
+
+## 6. Web Enrichment for Candidate Tuition
+
+When CareWait records have blank, incomplete, or preschool-only tuition for candidate centers:
+1. Ground the initial candidate pool using CareWait and CCLD to confirm official licensing, location, and ELFA participation.
+2. For top neighborhood candidates that lack published toddler rates in CareWait, use web tools (`webfetch` or browser) to inspect their official `.org` / `.com` tuition or admissions pages.
+3. If current tuition for the child's age group is verified on the provider's official site:
+   * Apply the family's confirmed ELFA credit to calculate exact net out-of-pocket costs.
+   * Cite the provider's tuition URL and access date in the recommendations table.
+4. If rates remain unpublished or slot-dependent (e.g. Kai Ming's government-funded slots), clearly explain the regulated fee basis and provide the direct admissions contact.
