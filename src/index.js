@@ -63,7 +63,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'search_sf_childcare',
         description:
-          'Search the official San Francisco CareWait database of over 500 licensed early care and preschool programs with real-time filters.',
+          'Search San Francisco\'s CareWait listings of 500+ licensed early care and preschool programs with live filters.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -189,7 +189,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_elfa_rates_and_rules',
         description:
-          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules, including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
+          'Get the FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules published by the San Francisco Department of Early Childhood (DEC), including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {}
@@ -198,7 +198,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_state_licensing_record',
         description:
-          'Retrieve official California Community Care Licensing Division (CCLD) state inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and official comments for a child care facility by license number.',
+          'Retrieve a child care facility\'s inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and inspector comments by license number, from the California Community Care Licensing Division (CCLD) public transparency API.',
         inputSchema: {
           type: 'object',
           properties: {

@@ -1,18 +1,19 @@
 # SF Early Learning For All (ELFA) & CareWait MCP Server
 
-An authoritative [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for navigating San Francisco's **Department of Early Childhood (DEC)** preschool network, **Early Learning For All (ELFA)** financial subsidies, and real-time **CareWait** database searches.
+An independent [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for San Francisco's **Early Learning For All (ELFA)** childcare assistance. It checks a family's eligibility against the **Department of Early Childhood (DEC)** tables, searches licensed programs in SF's **CareWait** listings, checks each one's state licensing record, and ranks the results with **TypeSafe Jev**.
 
-Includes a **TypeSafe Jev System One** evaluator and a comparison matrix for Jev's live model judgments versus a transparent local budget heuristic.
+Code gathers and verifies the facts. Jev (System One) then rates each verified program on commute, licensing record, budget fit, and language immersion, and recommendations are ranked by the weighted composite of those ratings.
+
+> **Not official.** This project is not affiliated with or endorsed by DEC, CareWait, or the California Community Care Licensing Division (CCLD), and it is not an authoritative source. Its costs and rankings are estimates: confirm eligibility with DEC, and tuition, openings, and ELFA participation with each provider.
 
 ---
 
 ## Features
 
 - **Live CareWait Search**: Search 500+ licensed San Francisco preschools and child care centers with real-time filters for age, language immersion, facility type, schedule (full-time vs part-time), and subsidy programs.
-- **Authoritative FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits, with citations to the DEC source documents.
+- **FY 2026–2027 SF DEC Rules**: Embedded rate tables, HUD AMI / California SMI ceilings, age bracket definitions (Infant, Toddler, Preschool), and strict co-pay limits, with citations to the DEC source documents.
 - **Net Out-of-Pocket Estimates**: Applies the applicable credit to a published tuition rate, uses the conservative end of a known range for budget fit, and leaves blank or incomplete rates unverified.
-- **TypeSafe Jev System One Integration**: Uses TypeSafe's JavaScript SDK with typed `score` and `choice` questions. Jev judgments require `TYPESAFE_API_KEY`; they do not replace official records or deterministic eligibility checks.
-- **Heuristic Comparison Tool**: Compares Jev's live model output with a rule-based budget heuristic. No generative LLM is called.
+- **Jev-Ranked Recommendations**: TypeSafe Jev System One rates every verified program through TypeSafe's JavaScript SDK, using typed `score` and `choice` questions, and recommendations are ranked by the weighted composite. Requires `TYPESAFE_API_KEY`; without it, `get_smart_recommendations` returns an error rather than ranking programs another way. Jev's ratings are model judgments over verified facts; they do not replace CCLD records, DEC's eligibility rules, or a provider's confirmation.
 
 ---
 
@@ -47,18 +48,15 @@ Queries the live SF CareWait database with rich filters:
 Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info (phone, email, and the provider's `website`), and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
-All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit. The DEC documents behind the credit amounts are returned in `subsidySources`.
+The recommendation engine, ranked by TypeSafe Jev. It takes child age, budget, language, schedule, income or benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status. Code gathers the facts and applies the checks described in [How Recommendations Are Made](#how-recommendations-are-made). Jev then scores every program that passes, and both lists (`recommendations` within budget, `stretchOptions` over it) are ordered by its composite. Each program carries a `jev` block (composite, 0–3 ratings, recommendation, and probabilities), and `jevScoring` reports the model, weights, counts, and token usage. Requires `TYPESAFE_API_KEY`. Missing provider aid data never becomes an assumed credit, and the DEC documents behind the credit amounts are returned in `subsidySources`.
 
 With a home zip code, the search works outward in rings (about 1.2, 2.5, and 3.8 miles, straight line), fetching every page of each ring until 50 providers are queued for detail and CCLD checks, so the closest programs are always evaluated first. It widens to all of San Francisco only when fewer than 10 programs match nearby, and adds those after the nearby ones. `searchScope` reports the zip codes searched and whether the search went citywide.
 
-### 5. `compare_heuristic_vs_jev`
-Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
+### 5. `get_elfa_rates_and_rules`
+Returns the FY 2026–2027 rate schedules, income ceilings (families of 1–12), and program rules as published by the Department of Early Childhood, with the DEC source documents in `sources`.
 
-### 6. `get_elfa_rates_and_rules`
-Returns the raw authoritative FY 2026–2027 Department of Early Childhood rate schedules, income ceilings (families of 1–12), and program rules, with the DEC source documents in `sources`.
-
-### 7. `get_state_licensing_record`
-Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves official inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number. Each record includes `ccldFacilityUrl`, the facility's public CCLD page, for citation.
+### 6. `get_state_licensing_record`
+Direct integration with the **California Community Care Licensing Division (CCLD)** transparency database: retrieves inspection histories, capacity, complaint visits, substantiated allegations, Type A/B violations, and licensing conditions by license number. Each record includes `ccldFacilityUrl`, the facility's public CCLD page, for citation.
 
 ## MCP Prompt: `family_intake_interview`
 
@@ -71,22 +69,35 @@ Each answer is mapped to a tool parameter. For example, "not sure" about potty t
 
 ---
 
-## Eligibility Gates and TypeSafe Jev Scoring
+## How Recommendations Are Made
 
-Hard factual checks stay in application code. Jev supplies model judgments for the structured scoring dimensions:
+Facts stay in deterministic code; Jev makes the judgment calls.
 
-1. **Verified Requirements (Deterministic Gates)**:
+1. **Gather and verify (code)**: The search works outward from the family's zip code, as described above, and loads each program's CareWait details and CCLD records. A program must then pass these checks:
    - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean. Providers with several licenses (e.g. separate infant and preschool licenses) are checked on every license, and the most severe finding is reported.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
    - Published rate and provider-confirmed ELFA tier before placement in verified recommendations. Diapering accommodation is reported per provider (`diaperingFitStatus`) as a question for parents to confirm on tours, but is excluded from code-enforced gating and Jev composite scoring because CareWait provider records rarely populate the field (<2%). A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
    - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
 
-2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
-   - With a location: **Location 30%, Safety 30%, Budget 25%, Immersion 15%** (diapering excluded).
-   - Without a location: **Safety 40%, Budget 35%, Immersion 25%** (diapering excluded).
+   Programs that fail a check are listed for follow-up (`unverifiedSafetyCandidates`, `unverifiedRateCandidates`, `unverifiedAgeCandidates`) and are never sent to Jev, which is not asked to rate missing data.
 
-3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's available score answers; if answers are missing, the composite is reweighted over scored dimensions and includes a coverage value and missing-dimension list. The choice is a separate model judgment, not a verdict derived mechanically from that composite.
+2. **Score (Jev)**: Every program that passes, up to 25 per request (within-budget ones first, each group closest first), goes to TypeSafe Jev System One, 8 calls at a time. Jev rates each one on a 0–3 rubric:
+   - **Commute**: straight-line distance from the home zip code, when one is given.
+   - **Licensing record**: the verified CCLD citations, complaint visits, and substantiated allegations.
+   - **Budget fit**: the net monthly cost against the family's budget.
+   - **Language immersion**: depth of immersion in the requested language, when one is given.
+
+   Jev also picks an overall recommendation (`top_tier`, `strong_alternative`, `caution_flagged`, `unsuitable`, or `needs_verification`), with probabilities.
+
+3. **Rank (composite)**: Each rating is divided by 3 and weighted, with the weights renormalized over the criteria that apply:
+   - With a location: **Location 30%, Safety 30%, Budget 25%, Immersion 15%**.
+   - Without a location: **Safety 40%, Budget 35%, Immersion 25%**.
+   - With no language preference, immersion drops out and the other weights scale up.
+
+   A missing Jev answer lowers `compositeCoverage` instead of counting as zero. A program Jev could not score stays in its list, after the scored ones, with `jev.status: "failed"`; if every call fails, the tool returns the error.
+
+In a September 2026 run near Civic Center (94102), with the Half Credit and a $1,200 budget, the search made 137 requests (CareWait, CCLD, and Jev) in about 3 seconds: 45 programs were checked and about two dozen passed. The cheapest program within budget ($230 a month) had a Type A citation on its CCLD record, so Jev rated its licensing record below 0.1 out of 3, and it ranked last of the nine within budget.
 
 CareWait's `100` / `25` accommodation evidence values are ordinal signals, not likelihoods: `100` means that specific accommodation is explicitly listed and `25` means it is not confirmed. Diaper changes and potty-training support use separate values; a potty-training flag never confirms diaper changing.
 
@@ -103,6 +114,8 @@ cd sf-early-learning-mcp
 npm install
 npm test
 ```
+
+Recommendations need a [TypeSafe AI](https://typesafe.ai) API key (see the [TypeSafe docs](https://docs.typesafe.ai/)). Set `TYPESAFE_API_KEY` in the MCP server's environment as shown below. The eligibility, search, details, and licensing tools work without it.
 
 ### Configuration in OpenCode (`opencode.json`)
 
@@ -149,19 +162,19 @@ Add to your `claude_desktop_config.json`:
 
 ## Recommended Prompts to Start
 
-Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-paste prompts:
+Once configured in your AI client (OpenCode, Claude, Cursor), try these copy-paste prompts. Before recommending, the agent asks whatever the prompt leaves out (age in months, potty training, household size, schedule, daycare type, income range, budget, and language), then returns tables ranked by Jev.
 
 ### 1. The Intake Interview
-> *"I have a 2-year-old child and live in San Francisco. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend preschools based on my budget and language preference."*
+> *"I have a 2-year-old child, and live in San Francisco zip 94102. Walk me through the Early Learning For All (ELFA) options, check my eligibility, and recommend preschools based on my budget and language immersion."*
 
-### 2. Low Out-of-Pocket Language Immersion
-> *"We have the ELFA Half Tuition Credit for our 2.1-year-old toddler. Can you find licensed preschool centers (not home-based) offering Spanish or Cantonese/Mandarin immersion where our out-of-pocket tuition is under $400/month?"*
+### 2. Language Immersion Near Home
+> *"We have the ELFA Half Tuition Credit for our 2-year-old and live in North Beach (94133). Which licensed centers (not home-based) near us offer Cantonese immersion for under $1,200 a month out of pocket?"*
 
 ### 3. Income Eligibility Check
 > *"We are a family of 4 living in San Francisco with a gross monthly income of $15,000. Do we qualify for ELFA Free Tuition or the Full Credit? What is our monthly voucher amount for a 2-year-old toddler and a 4-year-old preschooler?"*
 
-### 4. Compare the Budget Heuristic with Jev
-> *"Compare the rule-based budget heuristic with TypeSafe Jev for Spanish immersion preschool centers in San Francisco with a target budget of $200/month."*
+### 4. See Jev's Reasoning
+> *"Our 3-year-old has the ELFA Full Tuition Credit and we live in the Mission (94110). Rank Spanish immersion programs, centers or family child care, that would cost us under $500 a month, and show the Jev ratings behind each ranking: commute, licensing record, budget fit, and immersion."*
 
 ---
 
