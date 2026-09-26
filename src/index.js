@@ -12,8 +12,6 @@ import {
 import { calculateEligibility, getElfaRatesAndRules } from './eligibility.js';
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
-import { evaluateCandidatesWithJev } from './jev-eval.js';
-import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
 import { buildFamilyIntakePrompt, describeFamilyIntakePrompt } from './family-intake.js';
 import { RECOMMENDATION_PROGRAM_TYPES, SCHEDULE_TYPES } from './constants.js';
@@ -198,62 +196,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'compare_heuristic_vs_jev',
-        description:
-          'Compares a transparent rule-based budget heuristic with TypeSafe Jev System One evaluations. Requires TYPESAFE_API_KEY; this tool does not call a generative LLM.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            childAgeYears: {
-              type: 'number',
-              description: 'Age of the child in years (default 2.1)'
-            },
-            childIsPottyTrained: {
-              type: 'boolean',
-              description: 'Optional. Whether this child is independently potty trained; omit if unknown'
-            },
-            familySize: {
-              type: 'number',
-              description: 'Family size (default 3)'
-            },
-            monthlyIncome: {
-              type: 'number',
-              description: 'Gross monthly household income to determine the ELFA tier'
-            },
-            annualIncome: {
-              type: 'number',
-              description: 'Gross annual household income to determine the ELFA tier'
-            },
-            benefitTier: {
-              type: 'string',
-              enum: ['privatePay', 'halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
-              description: 'Known tier; defaults to privatePay so no subsidy is assumed'
-            },
-            targetBudgetMonthly: {
-              type: 'number',
-              description: 'Target monthly budget (default 1200)'
-            },
-            preferredLanguage: {
-              type: 'string',
-              description: 'Preferred language immersion (e.g. Spanish, Mandarin, French)'
-            },
-            homeZipCode: {
-              type: 'number',
-              description: 'Family home zip code (e.g. 94121) to calculate distance and score location convenience'
-            },
-            programType: {
-              type: 'string',
-              enum: RECOMMENDATION_PROGRAM_TYPES,
-              description: 'licensedCenter (default), licensedFamilyChildCare, or any (either licensed setting)'
-            },
-            candidateCount: {
-              type: 'number',
-              description: 'Number of candidates to evaluate in the A/B matrix (default 5)'
-            }
-          }
-        }
-      },
-      {
         name: 'get_state_licensing_record',
         description:
           'Retrieve official California Community Care Licensing Division (CCLD) state inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and official comments for a child care facility by license number.',
@@ -339,15 +281,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'get_elfa_rates_and_rules': {
         return {
           content: [{ type: 'text', text: JSON.stringify(getElfaRatesAndRules(), null, 2) }]
-        };
-      }
-
-      case 'compare_heuristic_vs_jev':
-      case 'compare_llm_vs_jev':
-      case 'compare_gemini_vs_jev': {
-        const result = await runHeuristicVsJevComparison(args || {});
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
         };
       }
 
