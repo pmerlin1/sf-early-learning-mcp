@@ -4,14 +4,19 @@ import { ELFA_RATES_FY26_27, ELFA_SOURCE_LIST } from './constants.js';
 import { evaluateProximity, getNearbyZipCodes } from './geo-utils.js';
 import { ccldFacilityUrl, isVerifiedLicensedFacility } from './ccld-utils.js';
 import {
+  assertJevConfigured,
+  evaluateCandidatesWithJev,
+  jevCompositeWeights,
+  summarizeJevScoring
+} from './jev-eval.js';
+import {
   checkClassroomAge,
   detectRateBasis,
   getCareSupportEvidence,
   getProviderSubsidyEligibility,
   getPublishedMonthlyRate,
   isRateSafeForBudget,
-  estimateOutOfPocket,
-  rankCandidates
+  estimateOutOfPocket
 } from './recommendation-utils.js';
 
 // "Either" means either licensed setting. License-exempt programs have no CCLD record to
@@ -28,6 +33,49 @@ const MAX_PAGES_PER_SEARCH = 6;
 const PROVIDER_BATCH_SIZE = 50;
 // Below this many nearby matches, the search widens to all of San Francisco.
 const MIN_NEARBY_RESULTS = 10;
+// Verified programs Jev scores per request: within-budget ones first, each group closest first.
+const JEV_MAX_SCORED = 25;
+
+const byDistance = (a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99);
+
+// Highest Jev composite first; ties go to the closer program, then the cheaper one. Programs
+// Jev could not score follow the scored ones.
+const byJevComposite = (a, b) =>
+  (b.jev?.compositeScore ?? -1) - (a.jev?.compositeScore ?? -1) ||
+  byDistance(a, b) ||
+  a.estimatedNetOutOfPocketMonthly - b.estimatedNetOutOfPocketMonthly;
+
+function jevSummaryFor(judgment) {
+  if (!judgment) return null;
+  if (judgment.source !== 'jev_live_api') {
+    return {
+      status: judgment.source === 'jev_failed' ? 'failed' : judgment.source,
+      error: judgment.error ?? null,
+      compositeScore: null
+    };
+  }
+  const scoreFor = {
+    location: judgment.locationConvenienceScore,
+    safety: judgment.safetyScore,
+    budget: judgment.budgetFitScore,
+    immersion: judgment.immersionFitScore
+  };
+  return {
+    status: 'scored',
+    model: judgment.model,
+    compositeScore: judgment.compositeScore,
+    compositeCoverage: judgment.compositeCoverage,
+    missingScoreCriteria: judgment.missingScoreCriteria,
+    // Expected 0-3 rubric scores for the criteria in the composite.
+    scores: Object.fromEntries(Object.keys(judgment.compositeWeights || {}).map((criterion) => [
+      criterion,
+      scoreFor[criterion] == null ? null : Number(Number(scoreFor[criterion]).toFixed(2))
+    ])),
+    recommendation: judgment.recommendationChoice,
+    recommendationConfidence: judgment.confidence,
+    recommendationProbabilities: judgment.probabilities
+  };
+}
 
 async function searchAllPages(search, filter) {
   const first = await search({ ...filter, skip: 0, take: SEARCH_PAGE_SIZE });
@@ -114,7 +162,7 @@ function subsidyForTier(tier, ageCategory) {
 
 export async function getRecommendations(
   params = {},
-  { search = searchProfiles, getDetails = getSiteDetails } = {}
+  { search = searchProfiles, getDetails = getSiteDetails, evaluate } = {}
 ) {
   const {
     childAgeYears = 2.1,
@@ -139,6 +187,9 @@ export async function getRecommendations(
   if (!Number.isFinite(Number(targetBudgetMonthly)) || Number(targetBudgetMonthly) < 0) {
     throw new Error('targetBudgetMonthly must be a non-negative number.');
   }
+  // Recommendations are Jev's: without a key, fail before any provider lookups.
+  if (!evaluate) assertJevConfigured();
+  const scoreWithJev = evaluate || evaluateCandidatesWithJev;
 
   const ageCategory = childMonths < 24 ? 'infant' : (childMonths < 36 ? 'toddler' : 'preschool');
 
@@ -364,31 +415,52 @@ export async function getRecommendations(
     candidate.estimatedNetOutOfPocketMonthly !== null
   );
 
-  const withinBudget = rankCandidates(
-    rateVerified.filter((candidate) =>
-      candidate.estimatedNetOutOfPocketMonthly <= targetBudgetMonthly
-    ),
-    userLoc
-  );
+  // Code settles the facts: a current license with a complete CCLD record, classroom age fit,
+  // and a published rate. Jev then scores every program that passes, within budget or not, and
+  // its composite sets the order of both lists.
+  const withinBudgetPool = rateVerified
+    .filter((candidate) => candidate.estimatedNetOutOfPocketMonthly <= targetBudgetMonthly)
+    .sort(byDistance);
+  const overBudgetPool = rateVerified
+    .filter((candidate) => candidate.estimatedNetOutOfPocketMonthly > targetBudgetMonthly)
+    .sort(byDistance);
+  const toScore = [...withinBudgetPool, ...overBudgetPool].slice(0, JEV_MAX_SCORED);
+  const jevPreferences = {
+    targetBudgetMonthly,
+    preferredLanguage,
+    childAgeYears,
+    homeZipCode,
+    homeLocation,
+    programType
+  };
+  const judgments = toScore.length > 0 ? await scoreWithJev(toScore, jevPreferences) : [];
+  const judgmentById = new Map(judgments.map((judgment) => [judgment.candidateEntityId, judgment]));
+  const scoredIds = new Set(toScore.map((candidate) => candidate.entityId));
+  const withJev = (candidate) => ({
+    ...candidate,
+    jev: jevSummaryFor(judgmentById.get(candidate.entityId))
+  });
 
-  const stretchOptions = rankCandidates(
-    rateVerified.filter((candidate) =>
-      candidate.estimatedNetOutOfPocketMonthly > targetBudgetMonthly
-    ),
-    null
-  );
+  const withinBudget = withinBudgetPool
+    .filter((candidate) => scoredIds.has(candidate.entityId))
+    .map(withJev)
+    .sort(byJevComposite);
+  const stretchOptions = overBudgetPool
+    .filter((candidate) => scoredIds.has(candidate.entityId))
+    .map(withJev)
+    .sort(byJevComposite);
 
   const unverifiedRates = detailedCandidates
     .filter((candidate) => !candidate._hasCompleteRate)
-    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+    .sort(byDistance);
 
   const unverifiedSafety = detailedCandidates
     .filter((candidate) => !candidate._ccldVerified)
-    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+    .sort(byDistance);
 
   const unverifiedAge = detailedCandidates
     .filter((candidate) => candidate.ageFitStatus === 'unknown')
-    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
+    .sort(byDistance);
 
   const publicCandidates = (candidates) => candidates.map(({
     _hasCompleteRate,
@@ -416,6 +488,14 @@ export async function getRecommendations(
     preferredLanguage: preferredLanguage || 'Any',
     programTypePreference: programType,
     totalFound: detailedCandidates.length,
+    jevScoring: {
+      method: 'TypeSafe Jev System One rates each verified program on a 0-3 rubric per criterion; ' +
+        'recommendations and stretch options are ranked by the weighted composite (0-1) of those ratings.',
+      weights: jevCompositeWeights(jevPreferences),
+      ...summarizeJevScoring(judgments),
+      candidatesNotScored: rateVerified.length - toScore.length,
+      maxScoredPerRequest: JEV_MAX_SCORED
+    },
     recommendations: publicCandidates(withinBudget.slice(0, maxResults)),
     stretchOptions: publicCandidates(stretchOptions.slice(0, maxResults || 10)),
     unverifiedRateCandidates: publicCandidates(unverifiedRates.slice(0, 15)),

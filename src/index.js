@@ -12,8 +12,6 @@ import {
 import { calculateEligibility, getElfaRatesAndRules } from './eligibility.js';
 import { searchProfiles, getSiteDetails } from './carewait-client.js';
 import { getRecommendations } from './recommendations.js';
-import { evaluateCandidatesWithJev } from './jev-eval.js';
-import { runHeuristicVsJevComparison } from './ab-test.js';
 import { getFacilityDetail } from './ccld-client.js';
 import { buildFamilyIntakePrompt, describeFamilyIntakePrompt } from './family-intake.js';
 import { RECOMMENDATION_PROGRAM_TYPES, SCHEDULE_TYPES } from './constants.js';
@@ -65,7 +63,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'search_sf_childcare',
         description:
-          'Search the official San Francisco CareWait database of over 500 licensed early care and preschool programs with real-time filters.',
+          'Search San Francisco\'s CareWait listings of 500+ licensed early care and preschool programs with live filters.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -129,7 +127,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_smart_recommendations',
         description:
-          'Recommendation engine: combines child age and toilet-training status, family size, income/known benefit tier, max out-of-pocket budget, language immersion preferences, and facility type. Applies ELFA credits only when the provider detail record lists the selected tier; unknown provider eligibility never becomes an assumed credit.',
+          'Recommendation engine ranked by TypeSafe Jev. Code first gathers and verifies the facts: CareWait programs near the family\'s zip code, CCLD license and inspection records, classroom age fit in months, published tuition, and the family\'s ELFA credit (applied only when the provider lists the family\'s tier). Jev then rates each verified program on commute, licensing record, budget fit, and language immersion (when a language is requested), gives an overall recommendation, and both lists are ranked by the weighted composite of its ratings. Requires TYPESAFE_API_KEY; without it the tool returns an error and never ranks programs another way.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -139,7 +137,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             childIsPottyTrained: {
               type: 'boolean',
-              description: 'Optional. Whether this child is independently potty trained; omit if unknown. Diapering accommodation is tracked for parent reference and tour checklists, but does not gate verified recommendations.'
+              description: 'Optional. Whether this child is independently potty trained; omit if unknown. Diapering accommodation is reported for parent tour checklists; it does not filter or score recommendations.'
             },
             familySize: {
               type: 'number',
@@ -191,72 +189,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_elfa_rates_and_rules',
         description:
-          'Get authoritative San Francisco Department of Early Childhood (DEC) official FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules, including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
+          'Get the FY 2026-2027 reimbursement rates, income eligibility tables (families of 1-12), and program rules published by the San Francisco Department of Early Childhood (DEC), including how part-time care is credited. Returns the DEC source documents in `sources`, for citation.',
         inputSchema: {
           type: 'object',
           properties: {}
         }
       },
       {
-        name: 'compare_heuristic_vs_jev',
-        description:
-          'Compares a transparent rule-based budget heuristic with TypeSafe Jev System One evaluations. Requires TYPESAFE_API_KEY; this tool does not call a generative LLM.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            childAgeYears: {
-              type: 'number',
-              description: 'Age of the child in years (default 2.1)'
-            },
-            childIsPottyTrained: {
-              type: 'boolean',
-              description: 'Optional. Whether this child is independently potty trained; omit if unknown'
-            },
-            familySize: {
-              type: 'number',
-              description: 'Family size (default 3)'
-            },
-            monthlyIncome: {
-              type: 'number',
-              description: 'Gross monthly household income to determine the ELFA tier'
-            },
-            annualIncome: {
-              type: 'number',
-              description: 'Gross annual household income to determine the ELFA tier'
-            },
-            benefitTier: {
-              type: 'string',
-              enum: ['privatePay', 'halfCreditELFA', 'fullCreditELFA', 'freeTuitionELFA'],
-              description: 'Known tier; defaults to privatePay so no subsidy is assumed'
-            },
-            targetBudgetMonthly: {
-              type: 'number',
-              description: 'Target monthly budget (default 1200)'
-            },
-            preferredLanguage: {
-              type: 'string',
-              description: 'Preferred language immersion (e.g. Spanish, Mandarin, French)'
-            },
-            homeZipCode: {
-              type: 'number',
-              description: 'Family home zip code (e.g. 94121) to calculate distance and score location convenience'
-            },
-            programType: {
-              type: 'string',
-              enum: RECOMMENDATION_PROGRAM_TYPES,
-              description: 'licensedCenter (default), licensedFamilyChildCare, or any (either licensed setting)'
-            },
-            candidateCount: {
-              type: 'number',
-              description: 'Number of candidates to evaluate in the A/B matrix (default 5)'
-            }
-          }
-        }
-      },
-      {
         name: 'get_state_licensing_record',
         description:
-          'Retrieve official California Community Care Licensing Division (CCLD) state inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and official comments for a child care facility by license number.',
+          'Retrieve a child care facility\'s inspection history, capacity, complaint visits, substantiated allegations, Type A/B violations, and inspector comments by license number, from the California Community Care Licensing Division (CCLD) public transparency API.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -339,15 +281,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'get_elfa_rates_and_rules': {
         return {
           content: [{ type: 'text', text: JSON.stringify(getElfaRatesAndRules(), null, 2) }]
-        };
-      }
-
-      case 'compare_heuristic_vs_jev':
-      case 'compare_llm_vs_jev':
-      case 'compare_gemini_vs_jev': {
-        const result = await runHeuristicVsJevComparison(args || {});
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
         };
       }
 

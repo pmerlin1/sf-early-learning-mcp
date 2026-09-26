@@ -1,7 +1,6 @@
 import { calculateEligibility } from '../src/eligibility.js';
 import { searchProfiles, getSiteDetails } from '../src/carewait-client.js';
 import { getRecommendations } from '../src/recommendations.js';
-import { runHeuristicVsJevComparison } from '../src/ab-test.js';
 
 async function runTests() {
   console.log('--- TEST 1: calculateEligibility ---');
@@ -35,33 +34,21 @@ async function runTests() {
     console.log(`- Monthly Rates:`, details.monthlyRates);
   }
 
-  console.log('\n--- TEST 4: getRecommendations for 2.1 yo, $1200 budget, Spanish ---');
+  console.log('\n--- TEST 4: Jev-ranked recommendations for 2.1 yo near 94110, $1200 budget, Spanish ---');
+  // Requires TYPESAFE_API_KEY: get_smart_recommendations fails closed without Jev.
   const recs = await getRecommendations({
     childAgeYears: 2.1,
     benefitTier: 'halfCreditELFA',
     targetBudgetMonthly: 1200,
     preferredLanguage: 'Spanish',
+    homeZipCode: 94110,
     programType: 'licensedCenter',
     maxResults: 5
   });
-  console.log(`Found ${recs.totalFound} matching centers. Top recommendations:`);
+  const { jevScoring } = recs;
+  console.log(`Found ${recs.totalFound} programs; Jev (${jevScoring.model}) scored ${jevScoring.candidatesScored}, weights ${JSON.stringify(jevScoring.weights)}`);
   for (const r of recs.recommendations) {
-    console.log(`- ${r.name} | Gross: $${r.grossMonthlyTuition} | ELFA schedule: $${r.monthlySubsidyCredit} | Deducted from rate: $${r.monthlySubsidyCreditAppliedToRate} | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
-  }
-
-  console.log('\n--- TEST 5: rule-based heuristic vs live Jev System One ---');
-  const ab = await runHeuristicVsJevComparison({
-    childAgeYears: 2.1,
-    targetBudgetMonthly: 1200,
-    preferredLanguage: 'Spanish',
-    candidateCount: 3
-  });
-  console.log('Agreement rate:', ab.evaluationSummary.agreementRate ?? 'N/A');
-  for (const m of ab.matrix) {
-    console.log(`Candidate: ${m.candidateName}`);
-    console.log(`  Net Cost: $${m.netMonthlyCost}/mo`);
-    console.log(`  Heuristic: Grade ${m.heuristicEval.rating} | ${m.heuristicEval.rationale}`);
-    console.log(`  Jev: Decision '${m.jevSystemOneEval.decision}' | Composite: ${m.jevSystemOneEval.compositeScore}`);
+    console.log(`- ${r.name} | Jev ${r.jev?.compositeScore} (${r.jev?.recommendation}) | ${r.distanceMiles} mi | Net: $${r.estimatedNetOutOfPocketMonthly}/mo | Phone: ${r.phone}`);
   }
 
   console.log('\nAll tests passed successfully!');

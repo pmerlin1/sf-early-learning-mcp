@@ -6,7 +6,6 @@ import {
   getNearbyZipCodes,
   SF_ZIP_CENTROIDS
 } from '../src/geo-utils.js';
-import { rankCandidates } from '../src/recommendation-utils.js';
 
 test('Geolocation & Proximity Evaluation', async (t) => {
   await t.test('Calculates Haversine distance correctly', () => {
@@ -28,15 +27,6 @@ test('Geolocation & Proximity Evaluation', async (t) => {
     assert.ok(prox.distanceMiles > 5.0);
     assert.ok(prox.proximityLevel <= 1.0);
     assert.equal(prox.isImmediateNeighborhood, false);
-  });
-
-  await t.test('prioritizes a substantially closer center over a cheaper distant one', () => {
-    const candidates = [
-      { name: 'Distant and cheap', distanceMiles: 6, estimatedNetOutOfPocketMonthly: 100 },
-      { name: 'Nearby and pricier', distanceMiles: 2, estimatedNetOutOfPocketMonthly: 400 }
-    ];
-    const ranked = rankCandidates(candidates, 94121);
-    assert.equal(ranked[0].name, 'Nearby and pricier');
   });
 });
 
