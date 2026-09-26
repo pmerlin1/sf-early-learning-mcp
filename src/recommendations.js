@@ -18,6 +18,79 @@ import {
 // verify, so they are left out rather than crowding licensed programs out of the batch.
 const LICENSED_PROGRAM_TYPES = ['licensedCenter', 'licensedFamilyChildCare'];
 
+// CareWait returns at most one page of 50 matches per request, in a fixed pseudo-random order
+// rather than by distance. The search therefore works outward in rings around the family's zip;
+// the ring edges match the immediate, adjacent, and moderate-commute proximity levels.
+const SEARCH_RING_LIMITS_MILES = [1.2, 2.5, 3.8];
+const SEARCH_PAGE_SIZE = 50;
+const MAX_PAGES_PER_SEARCH = 6;
+// Providers whose details and CCLD records are fetched for one recommendation request.
+const PROVIDER_BATCH_SIZE = 50;
+// Below this many nearby matches, the search widens to all of San Francisco.
+const MIN_NEARBY_RESULTS = 10;
+
+async function searchAllPages(search, filter) {
+  const first = await search({ ...filter, skip: 0, take: SEARCH_PAGE_SIZE });
+  const items = [...(first.items || [])];
+  const total = Number(first.total);
+  const pageCount = items.length === SEARCH_PAGE_SIZE && Number.isFinite(total)
+    ? Math.max(1, Math.min(MAX_PAGES_PER_SEARCH, Math.ceil(total / SEARCH_PAGE_SIZE)))
+    : 1;
+  const laterPages = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      search({ ...filter, skip: (index + 1) * SEARCH_PAGE_SIZE, take: SEARCH_PAGE_SIZE })
+    )
+  );
+  for (const page of laterPages) items.push(...(page.items || []));
+  return items;
+}
+
+/**
+ * Search the family's zip and the closest surrounding zips first, widening one ring at a time
+ * until the provider batch is full. Citywide matches are appended after nearby ones, never in
+ * their place, and only when the neighborhood has too few.
+ */
+async function searchNearestFirst(search, filter, userLoc) {
+  const zipOrder = new Map(
+    (getNearbyZipCodes(userLoc, Infinity) || []).map((zip, index) => [zip, index])
+  );
+  const closestFirst = (list) => list
+    .map((item, index) => ({ item, index, rank: zipOrder.get(Number(item.zipCode)) ?? zipOrder.size }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ item }) => item);
+
+  const items = [];
+  const seen = new Set();
+  const add = (list) => {
+    for (const item of closestFirst(list)) {
+      if (seen.has(item.entityId)) continue;
+      seen.add(item.entityId);
+      items.push(item);
+    }
+  };
+
+  const searchedZipCodes = [];
+  for (const limit of SEARCH_RING_LIMITS_MILES) {
+    const ring = (getNearbyZipCodes(userLoc, limit) || [])
+      .filter((zip) => !searchedZipCodes.includes(zip));
+    if (ring.length === 0) continue;
+    add(await searchAllPages(search, { ...filter, zipCodes: ring }));
+    searchedZipCodes.push(...ring);
+    if (items.length >= PROVIDER_BATCH_SIZE) break;
+  }
+
+  const citywide = items.length < MIN_NEARBY_RESULTS;
+  if (citywide) {
+    const citywideResults = await search({ ...filter, skip: 0, take: SEARCH_PAGE_SIZE });
+    add(citywideResults.items || []);
+  }
+
+  return {
+    items: items.slice(0, PROVIDER_BATCH_SIZE),
+    searchScope: { zipCodes: searchedZipCodes, citywide }
+  };
+}
+
 function normalizeTier(tier) {
   if (tier === 'elfaHalfCredit' || tier === 'halfCreditELFA') return 'halfCreditELFA';
   if (tier === 'elfaFullCredit' || tier === 'fullCreditELFA') return 'fullCreditELFA';
@@ -84,29 +157,20 @@ export async function getRecommendations(
 
   const subsidyAmount = subsidyForTier(activeTier, ageCategory);
   const userLoc = homeZipCode || homeLocation;
-  const nearbyZips = userLoc ? getNearbyZipCodes(userLoc, 3.8) : null;
   const searchFilter = {
     ageYears: Math.floor(childAgeYears),
     programType: programType === 'any' ? LICENSED_PROGRAM_TYPES : programType,
     financialAid: activeTier !== 'privatePay' ? [activeTier] : undefined,
     language: preferredLanguage,
-    schedule: schedule ? [schedule] : undefined,
-    zipCodes: nearbyZips && nearbyZips.length > 0 ? nearbyZips : undefined,
-    take: 50
+    schedule: schedule ? [schedule] : undefined
   };
 
-  let searchRes = await search(searchFilter);
-  let items = searchRes.items || [];
-  if (items.length < 10 && searchFilter.zipCodes) {
-    const broadFilter = { ...searchFilter, zipCodes: undefined };
-    const broadRes = await search(broadFilter);
-    if (broadRes.items && broadRes.items.length > items.length) {
-      items = broadRes.items;
-    }
-  }
-
+  const { items: candidateBatch, searchScope } = await searchNearestFirst(
+    search,
+    searchFilter,
+    userLoc
+  );
   const lookupWarnings = [];
-  const candidateBatch = items.slice(0, 50);
 
   const detailedCandidates = (await Promise.all(
     candidateBatch.map(async (item) => {
@@ -213,8 +277,7 @@ export async function getRecommendations(
             : (pottyTrainingStatus === 'confirmed'
               ? 'potty_training_only_diapering_unconfirmed'
               : 'unknown'));
-        const userLocation = homeZipCode || homeLocation;
-        const proximity = evaluateProximity(site.zipCode, site.location, userLocation);
+        const proximity = evaluateProximity(site.zipCode, site.location, userLoc);
         const licenseNumbers = site.licenseNumbers || (site.licenseNumber ? [site.licenseNumber] : []);
 
         return {
@@ -352,6 +415,9 @@ export async function getRecommendations(
     subsidySources: ELFA_SOURCE_LIST,
     targetBudgetMonthly,
     homeLocation: userLoc || null,
+    // Zip codes searched, closest first; `citywide` means programs anywhere in SF were added
+    // because no location was given or fewer than MIN_NEARBY_RESULTS matched nearby.
+    searchScope,
     preferredLanguage: preferredLanguage || 'Any',
     programTypePreference: programType,
     totalFound: detailedCandidates.length,

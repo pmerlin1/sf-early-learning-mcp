@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { haversineDistanceMiles, evaluateProximity, SF_ZIP_CENTROIDS } from '../src/geo-utils.js';
+import {
+  haversineDistanceMiles,
+  evaluateProximity,
+  getNearbyZipCodes,
+  SF_ZIP_CENTROIDS
+} from '../src/geo-utils.js';
 import { rankCandidates } from '../src/recommendation-utils.js';
 
 test('Geolocation & Proximity Evaluation', async (t) => {
@@ -32,5 +37,40 @@ test('Geolocation & Proximity Evaluation', async (t) => {
     ];
     const ranked = rankCandidates(candidates, 94121);
     assert.equal(ranked[0].name, 'Nearby and pricier');
+  });
+});
+
+test('nearby zip codes for neighborhood searches', async (t) => {
+  await t.test('covers every San Francisco ZCTA, so no neighborhood is skipped', () => {
+    const sfZctas = [
+      94102, 94103, 94104, 94105, 94107, 94108, 94109, 94110, 94111, 94112, 94114, 94115, 94116,
+      94117, 94118, 94121, 94122, 94123, 94124, 94127, 94129, 94130, 94131, 94132, 94133, 94134,
+      94158
+    ];
+    for (const zip of sfZctas) assert.ok(SF_ZIP_CENTROIDS[zip], 'missing centroid for ' + zip);
+  });
+
+  await t.test('lists the home zip first, then zips in order of distance', () => {
+    const zips = getNearbyZipCodes(94121, 3.8);
+    assert.equal(zips[0], 94121);
+    const home = SF_ZIP_CENTROIDS[94121];
+    const distances = zips.map((zip) => haversineDistanceMiles(
+      home.lat, home.lon, SF_ZIP_CENTROIDS[zip].lat, SF_ZIP_CENTROIDS[zip].lon
+    ));
+    assert.deepEqual(distances, [...distances].sort((a, b) => a - b));
+    assert.ok(distances.every((distance) => distance <= 3.8));
+    assert.ok(!zips.includes(94124), 'Bayview is a cross-town commute from the Outer Richmond');
+  });
+
+  await t.test('reaches neighbors that were missing from the centroid table', () => {
+    assert.ok(getNearbyZipCodes(94116, 2.5).includes(94127), 'West Portal borders Parkside');
+    const potreroHill = getNearbyZipCodes(94107, 2.5);
+    for (const zip of [94104, 94105, 94111]) assert.ok(potreroHill.includes(zip), String(zip));
+    assert.equal(getNearbyZipCodes(94127, 1.2)[0], 94127);
+  });
+
+  await t.test('returns null for a location it cannot place', () => {
+    assert.equal(getNearbyZipCodes(undefined), null);
+    assert.equal(getNearbyZipCodes(94015), null);
   });
 });

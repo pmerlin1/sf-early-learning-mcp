@@ -22,7 +22,14 @@ export const SF_ZIP_CENTROIDS = {
   94123: { lat: 37.7997, lon: -122.4384, neighborhood: 'Marina / Cow Hollow' },
   94129: { lat: 37.7987, lon: -122.4647, neighborhood: 'Presidio' },
   94131: { lat: 37.7447, lon: -122.4437, neighborhood: 'Twin Peaks / Glen Park' },
-  94158: { lat: 37.7712, lon: -122.3917, neighborhood: 'Mission Bay' }
+  94158: { lat: 37.7712, lon: -122.3917, neighborhood: 'Mission Bay' },
+  // Census 2020 ZCTA internal points. A zip missing from this table is left out of every
+  // neighborhood search, so each San Francisco ZCTA needs an entry.
+  94104: { lat: 37.7914, lon: -122.4021, neighborhood: 'Financial District' },
+  94105: { lat: 37.7896, lon: -122.3931, neighborhood: 'Rincon Hill / South Beach / Transbay' },
+  94111: { lat: 37.7994, lon: -122.3984, neighborhood: 'Embarcadero / Jackson Square' },
+  94127: { lat: 37.7360, lon: -122.4572, neighborhood: 'West Portal / St. Francis Wood / Miraloma' },
+  94130: { lat: 37.8207, lon: -122.3695, neighborhood: 'Treasure Island / Yerba Buena Island' }
 };
 
 /**
@@ -128,8 +135,9 @@ export function evaluateProximity(facilityZip, facilityCoords, homeLocation) {
 }
 
 /**
- * Returns San Francisco zip codes within a specified radius (in statute miles)
- * of a given home zip code or coordinate pair, sorted by distance.
+ * Returns San Francisco zip codes whose centroid lies within a straight-line radius
+ * (in statute miles) of a home zip code or coordinate pair, closest first.
+ * Returns null when the home location cannot be resolved.
  */
 export function getNearbyZipCodes(homeLocation, maxDistanceMiles = 3.5) {
   const homeCoords = resolveCoordinates(homeLocation);

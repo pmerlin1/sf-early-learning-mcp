@@ -357,3 +357,85 @@ test('daycare type preference reaches the provider search', async (t) => {
     assert.equal(result.programTypePreference, 'licensedCenter');
   });
 });
+
+// Stands in for CareWait search: filters by zip, pages with skip/take, and returns matches in
+// index order rather than by distance, as CareWait's fixed pseudo-random order does.
+function fakeCareWait(zipCounts) {
+  const index = zipCounts.flatMap(([zip, count]) => Array.from({ length: count }, (_, i) => ({
+    entityId: zip + '-' + i,
+    zipCode: String(zip)
+  })));
+  const calls = [];
+  const search = async (filter) => {
+    calls.push(filter);
+    const matches = filter.zipCodes
+      ? index.filter((item) => filter.zipCodes.includes(Number(item.zipCode)))
+      : index;
+    const skip = filter.skip ?? 0;
+    const take = filter.take ?? 50;
+    return { total: matches.length, items: matches.slice(skip, skip + take) };
+  };
+  return { search, calls };
+}
+
+async function providerBatchFor(zipCounts, params = {}) {
+  const { search, calls } = fakeCareWait(zipCounts);
+  const requested = [];
+  const result = await getRecommendations(
+    { childAgeYears: 2.1, targetBudgetMonthly: 5000, ...params },
+    {
+      search,
+      getDetails: async (entityId) => {
+        requested.push(entityId);
+        return null;
+      }
+    }
+  );
+  return { result, calls, requested };
+}
+
+const zipOf = (entityId) => Number(entityId.split('-')[0]);
+
+test('neighborhood search evaluates the closest programs', async (t) => {
+  await t.test('keeps every home-zip program when the neighborhood exceeds one page', async () => {
+    // Farther zips come first in CareWait's order, so a single page would miss the home zip.
+    const { result, calls, requested } = await providerBatchFor(
+      [[94102, 30], [94109, 30], [94116, 30], [94121, 21]],
+      { homeZipCode: 94121 }
+    );
+    assert.deepEqual(calls[0].zipCodes, [94121]);
+    assert.equal(requested.length, 50);
+    assert.ok(requested.slice(0, 21).every((id) => zipOf(id) === 94121));
+    assert.equal(requested.filter((id) => zipOf(id) === 94116).length, 29);
+    assert.ok(!requested.some((id) => zipOf(id) === 94102 || zipOf(id) === 94109));
+    assert.equal(result.searchScope.zipCodes[0], 94121);
+    assert.ok(!result.searchScope.zipCodes.includes(94102), 'stops widening once the batch is full');
+    assert.equal(result.searchScope.citywide, false);
+  });
+
+  await t.test('pages through a ring holding more than one page of programs', async () => {
+    const { calls, requested } = await providerBatchFor([[94121, 75]], { homeZipCode: 94121 });
+    assert.deepEqual(calls.map((call) => call.skip), [0, 50]);
+    assert.equal(requested.length, 50);
+    assert.equal(new Set(requested).size, 50);
+  });
+
+  await t.test('adds citywide programs after nearby ones instead of replacing them', async () => {
+    const { result, requested } = await providerBatchFor(
+      [[94124, 60], [94121, 3]],
+      { homeZipCode: 94121 }
+    );
+    assert.deepEqual(requested.slice(0, 3), ['94121-0', '94121-1', '94121-2']);
+    assert.equal(requested.length, 50);
+    assert.equal(new Set(requested).size, requested.length);
+    assert.equal(result.searchScope.citywide, true);
+  });
+
+  await t.test('searches citywide once when no location is given', async () => {
+    const { result, calls, requested } = await providerBatchFor([[94121, 5]]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].zipCodes, undefined);
+    assert.equal(requested.length, 5);
+    assert.deepEqual(result.searchScope, { zipCodes: [], citywide: true });
+  });
+});

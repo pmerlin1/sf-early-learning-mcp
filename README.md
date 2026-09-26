@@ -49,6 +49,8 @@ Fetches complete provider details by `entityId`: licensed classrooms, age limits
 ### 4. `get_smart_recommendations`
 All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit. The DEC documents behind the credit amounts are returned in `subsidySources`.
 
+With a home zip code, the search works outward in rings (about 1.2, 2.5, and 3.8 miles, straight line), fetching every page of each ring until 50 providers are queued for detail and CCLD checks, so the closest programs are always evaluated first. It widens to all of San Francisco only when fewer than 10 programs match nearby, and adds those after the nearby ones. `searchScope` reports the zip codes searched and whether the search went citywide.
+
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
 
