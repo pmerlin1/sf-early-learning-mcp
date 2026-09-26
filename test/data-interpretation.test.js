@@ -340,7 +340,9 @@ test('provider-published post-credit amounts', async (t) => {
       { childAgeYears: 2.1, benefitTier: 'halfCreditELFA', targetBudgetMonthly: 300 },
       {
         search: async () => ({ items: [{ entityId: site.entityId }] }),
-        getDetails: async () => site
+        getDetails: async () => site,
+        // The cost math is under test here, not Jev's ranking.
+        evaluate: async () => []
       }
     );
     assert.equal(result.recommendations.length, 0);

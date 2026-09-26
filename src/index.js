@@ -129,7 +129,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get_smart_recommendations',
         description:
-          'Recommendation engine: combines child age and toilet-training status, family size, income/known benefit tier, max out-of-pocket budget, language immersion preferences, and facility type. Applies ELFA credits only when the provider detail record lists the selected tier; unknown provider eligibility never becomes an assumed credit.',
+          'Recommendation engine ranked by TypeSafe Jev. Code first gathers and verifies the facts: CareWait programs near the family\'s zip code, CCLD license and inspection records, classroom age fit in months, published tuition, and the family\'s ELFA credit (applied only when the provider lists the family\'s tier). Jev then rates each verified program on commute, licensing record, budget fit, and language immersion (when a language is requested), gives an overall recommendation, and both lists are ranked by the weighted composite of its ratings. Requires TYPESAFE_API_KEY; without it the tool returns an error and never ranks programs another way.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -139,7 +139,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             childIsPottyTrained: {
               type: 'boolean',
-              description: 'Optional. Whether this child is independently potty trained; omit if unknown. Diapering accommodation is tracked for parent reference and tour checklists, but does not gate verified recommendations.'
+              description: 'Optional. Whether this child is independently potty trained; omit if unknown. Diapering accommodation is reported for parent tour checklists; it does not filter or score recommendations.'
             },
             familySize: {
               type: 'number',

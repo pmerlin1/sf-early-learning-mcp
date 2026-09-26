@@ -82,19 +82,6 @@ export function isRateSafeForBudget(rateStatus) {
   return ['verified', 'verified_range', 'verified_upper_bound'].includes(rateStatus);
 }
 
-export function rankCandidates(candidates, homeLocation) {
-  return [...candidates].sort((a, b) => {
-    const costA = a.estimatedNetOutOfPocketMonthly ?? Number.MAX_SAFE_INTEGER;
-    const costB = b.estimatedNetOutOfPocketMonthly ?? Number.MAX_SAFE_INTEGER;
-    if (homeLocation) {
-      const distanceA = a.distanceMiles ?? Number.MAX_SAFE_INTEGER;
-      const distanceB = b.distanceMiles ?? Number.MAX_SAFE_INTEGER;
-      if (Math.abs(distanceA - distanceB) > 1.5) return distanceA - distanceB;
-    }
-    return costA - costB;
-  });
-}
-
 // Matches notes such as Kai Ming's: "The tuition shown above are the amount families
 // will be paying after any ELFA tuition credit offset."
 const POST_CREDIT_NOTE = /\bafter\b[^.]{0,40}\b(credit|subsid(?:y|ies))\b/i;

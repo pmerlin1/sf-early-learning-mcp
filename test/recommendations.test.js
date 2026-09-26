@@ -44,6 +44,44 @@ const provider = {
   diaperingAccommodated: true
 };
 
+// Stands in for Jev: a scored judgment per program, with composites looked up by entityId.
+// `calls` records which programs were sent and with what preferences.
+function fakeJev(composites = {}, calls = []) {
+  return async (candidates, preferences) => {
+    calls.push({ ids: candidates.map((candidate) => candidate.entityId), preferences });
+    return candidates.map((candidate) => {
+      const composite = composites[candidate.entityId] ?? 0.8;
+      if (composite === 'failed') {
+        return {
+          candidateEntityId: candidate.entityId,
+          candidateName: candidate.name,
+          source: 'jev_failed',
+          error: 'APIConnectionError: socket hang up',
+          compositeScore: null
+        };
+      }
+      return {
+        candidateEntityId: candidate.entityId,
+        candidateName: candidate.name,
+        source: 'jev_live_api',
+        model: 'fixture-jev',
+        usage: { input_tokens: 100, output_tokens: 10 },
+        locationConvenienceScore: 2.5,
+        safetyScore: 3,
+        budgetFitScore: 2,
+        immersionFitScore: 2.75,
+        recommendationChoice: 'strong_alternative',
+        confidence: 0.7,
+        probabilities: { strong_alternative: 0.7 },
+        compositeScore: composite,
+        compositeCoverage: 1,
+        compositeWeights: { location: 0.3, safety: 0.3, budget: 0.25, immersion: 0.15 },
+        missingScoreCriteria: []
+      };
+    });
+  };
+}
+
 async function recommendForProvider(site, options = {}) {
   return getRecommendations(
     {
@@ -55,10 +93,38 @@ async function recommendForProvider(site, options = {}) {
     },
     {
       search: async () => ({ items: [{ entityId: 'fixture-provider' }] }),
-      getDetails: async () => ({ ...provider, ...site })
+      getDetails: async () => ({ ...provider, ...site }),
+      evaluate: fakeJev()
     }
   );
 }
+
+// Several providers near 94121; each site overrides the shared fixture.
+async function recommendFrom(sites, params = {}, evaluate = fakeJev()) {
+  const byId = new Map(sites.map((site) => [site.entityId, { ...provider, ...site }]));
+  return getRecommendations(
+    {
+      childAgeYears: 2.1,
+      benefitTier: 'halfCreditELFA',
+      targetBudgetMonthly: 400,
+      preferredLanguage: 'Spanish',
+      homeZipCode: 94121,
+      ...params
+    },
+    {
+      search: async () => ({
+        items: sites.map((site) => ({ entityId: site.entityId, zipCode: provider.zipCode }))
+      }),
+      getDetails: async (entityId) => byId.get(entityId),
+      evaluate
+    }
+  );
+}
+
+// About 0.35 miles north of the fixture location per step.
+const northOfHome = (steps) => ({ lat: provider.location.lat + steps * 0.005, lon: provider.location.lon });
+const withinBudgetRate = { toddler: { min: 1383, max: 1383 } };
+const overBudgetRate = { toddler: { min: 2000, max: 2000 } };
 
 test('exact classroom age compatibility', async (t) => {
   await t.test('excludes a 25.2-month-old from a 33-month classroom', () => {
@@ -342,7 +408,8 @@ test('daycare type preference reaches the provider search', async (t) => {
           searchFilter = filter;
           return { items: [] };
         },
-        getDetails: async () => null
+        getDetails: async () => null,
+        evaluate: fakeJev()
       }
     );
     return { result, searchFilter };
@@ -397,7 +464,8 @@ async function providerBatchFor(zipCounts, params = {}) {
       getDetails: async (entityId) => {
         requested.push(entityId);
         return null;
-      }
+      },
+      evaluate: fakeJev()
     }
   );
   return { result, calls, requested };
@@ -446,5 +514,123 @@ test('neighborhood search evaluates the closest programs', async (t) => {
     assert.equal(calls[0].zipCodes, undefined);
     assert.equal(requested.length, 5);
     assert.deepEqual(result.searchScope, { zipCodes: [], citywide: true });
+  });
+});
+
+test('Jev scores and ranks the recommendations', async (t) => {
+  await t.test('fails closed without a TypeSafe key, before any provider lookup', async () => {
+    const original = process.env.TYPESAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
+    let searches = 0;
+    try {
+      await assert.rejects(
+        getRecommendations({ childAgeYears: 2.1, homeZipCode: 94121 }, {
+          search: async () => {
+            searches += 1;
+            return { items: [] };
+          }
+        }),
+        /TYPESAFE_API_KEY is required/
+      );
+      assert.equal(searches, 0);
+    } finally {
+      if (original !== undefined) process.env.TYPESAFE_API_KEY = original;
+    }
+  });
+
+  await t.test('orders programs by the Jev composite, not by distance or price', async () => {
+    const result = await recommendFrom([
+      { entityId: 'near-and-cheaper', monthlyRates: withinBudgetRate },
+      { entityId: 'farther-and-pricier', location: northOfHome(6) }
+    ], {}, fakeJev({ 'near-and-cheaper': 0.55, 'farther-and-pricier': 0.91 }));
+
+    const [first, second] = result.recommendations;
+    assert.equal(first.entityId, 'farther-and-pricier');
+    assert.ok(first.distanceMiles > second.distanceMiles);
+    assert.ok(first.estimatedNetOutOfPocketMonthly > second.estimatedNetOutOfPocketMonthly);
+    assert.equal(first.jev.status, 'scored');
+    assert.equal(first.jev.compositeScore, 0.91);
+    assert.equal(first.jev.recommendation, 'strong_alternative');
+    assert.deepEqual(first.jev.scores, { location: 2.5, safety: 3, budget: 2, immersion: 2.75 });
+  });
+
+  await t.test('sends every verified program to Jev, within budget first, and nothing unverified', async () => {
+    const calls = [];
+    const result = await recommendFrom([
+      { entityId: 'over-budget-nearby', monthlyRates: overBudgetRate },
+      { entityId: 'within-budget-farther', location: northOfHome(4) },
+      { entityId: 'no-ccld-record', ccldInspection: null },
+      { entityId: 'unpublished-rate', monthlyRates: { toddler: { min: null, max: null } } }
+    ], {}, fakeJev({}, calls));
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].ids, ['within-budget-farther', 'over-budget-nearby']);
+    assert.equal(calls[0].preferences.homeZipCode, 94121);
+    assert.equal(calls[0].preferences.targetBudgetMonthly, 400);
+    assert.equal(calls[0].preferences.preferredLanguage, 'Spanish');
+
+    assert.deepEqual(result.recommendations.map((option) => option.entityId), ['within-budget-farther']);
+    assert.deepEqual(result.stretchOptions.map((option) => option.entityId), ['over-budget-nearby']);
+    assert.equal(result.stretchOptions[0].jev.status, 'scored');
+    assert.equal(result.unverifiedSafetyCandidates[0].entityId, 'no-ccld-record');
+    assert.equal(result.unverifiedSafetyCandidates[0].jev, undefined);
+    assert.equal(result.unverifiedRateCandidates[0].entityId, 'unpublished-rate');
+    assert.equal(result.unverifiedRateCandidates[0].jev, undefined);
+  });
+
+  await t.test('keeps a program Jev could not score, marked failed, after the scored ones', async () => {
+    const result = await recommendFrom([
+      { entityId: 'unscored' },
+      { entityId: 'scored', location: northOfHome(3) }
+    ], {}, fakeJev({ unscored: 'failed', scored: 0.4 }));
+
+    assert.deepEqual(result.recommendations.map((option) => option.entityId), ['scored', 'unscored']);
+    assert.equal(result.recommendations[1].jev.status, 'failed');
+    assert.equal(result.recommendations[1].jev.compositeScore, null);
+    assert.equal(result.jevScoring.candidatesFailed, 1);
+    assert.match(result.jevScoring.failures[0].error, /socket hang up/);
+  });
+
+  await t.test('reports the Jev model, weights, counts, and token usage', async () => {
+    const result = await recommendFrom([
+      { entityId: 'a' },
+      { entityId: 'b', location: northOfHome(2) }
+    ]);
+
+    assert.equal(result.jevScoring.model, 'fixture-jev');
+    assert.equal(result.jevScoring.candidatesScored, 2);
+    assert.equal(result.jevScoring.candidatesNotScored, 0);
+    assert.deepEqual(result.jevScoring.usage, { input_tokens: 200, output_tokens: 20 });
+    assert.deepEqual(result.jevScoring.weights,
+      { location: 0.3, safety: 0.3, budget: 0.25, immersion: 0.15 });
+    assert.match(result.jevScoring.method, /weighted composite/);
+  });
+
+  await t.test('scores at most 25 programs, within-budget ones before closer over-budget ones', async () => {
+    const calls = [];
+    const overBudget = Array.from({ length: 22 }, (_, index) => ({
+      entityId: 'over-' + index,
+      monthlyRates: overBudgetRate,
+      location: northOfHome(index)
+    }));
+    const withinBudget = Array.from({ length: 5 }, (_, index) => ({
+      entityId: 'within-' + index,
+      location: northOfHome(30 + index)
+    }));
+    const result = await recommendFrom([...overBudget, ...withinBudget], {}, fakeJev({}, calls));
+
+    assert.equal(calls[0].ids.length, 25);
+    assert.deepEqual(calls[0].ids.slice(0, 5), ['within-0', 'within-1', 'within-2', 'within-3', 'within-4']);
+    assert.equal(result.jevScoring.candidatesNotScored, 2);
+    assert.ok(!calls[0].ids.includes('over-21'), 'the farthest over-budget programs are left out');
+  });
+
+  await t.test('does not call Jev when no program passes the fact checks', async () => {
+    const calls = [];
+    const result = await recommendFrom([{ entityId: 'no-ccld-record', ccldInspection: null }], {},
+      fakeJev({}, calls));
+    assert.equal(calls.length, 0);
+    assert.equal(result.recommendations.length, 0);
+    assert.equal(result.jevScoring.candidatesScored, 0);
   });
 });
