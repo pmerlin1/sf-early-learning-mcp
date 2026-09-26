@@ -219,6 +219,8 @@ export async function getSiteDetails(entityId) {
     },
     phone: prof.phoneNumber || '',
     email: prof.email || '',
+    // The provider's own site, for checking tuition that CareWait leaves blank.
+    website: prof.website || '',
     description: prof.programDescription || '',
     languages: languagesTaught,
     financialAid: financialAidList,

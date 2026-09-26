@@ -288,6 +288,7 @@ export async function getRecommendations(
           location: site.location,
           phone: site.phone,
           email: site.email,
+          website: site.website || '',
           programType: site.programType,
           languages: site.languages || [],
           financialAid: site.financialAid || [],

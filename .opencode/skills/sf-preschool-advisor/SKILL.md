@@ -108,29 +108,38 @@ CareWait's 100/25 evidence values are ordinal evidence signals, not probabilitie
 
 ---
 
-## 5. Mandatory Response Presentation: Recommendation Table
+## 5. Mandatory Response Presentation: Recommendation Tables
 
-Whenever presenting preschool or child care options to a family, **ALWAYS present the options in a clear, formatted Markdown table** with the following required columns:
+Whenever presenting preschool or child care options to a family, **always present them in Markdown tables** with these columns:
 
-| Name | Address / Distance | Language | CCLD Record | Cost (Gross & Net Out-of-Pocket) |
+| Name | Address / Distance | Language | CCLD Record | Cost |
 | :--- | :--- | :--- | :--- | :--- |
 
-* **Name**: Provider name linked to its official CCLD facility record URL (`ccldFacilityUrl`).
-* **Address / Distance**: Full street address and calculated driving/commute distance in miles from the family's home zip code.
-* **Language**: Primary language instruction, dual-language, or immersion track (e.g. Spanish, Mandarin, Cantonese, Japanese, English).
-* **CCLD Record**: Verified safety rating (Clear / Pristine, Minor Type B findings, or Caution with Type A citation counts).
-* **Cost**: Published monthly gross tuition, monthly ELFA credit amount, and calculated net monthly out-of-pocket cost (or note if rates are unverified / unpublished).
+* **Name**: The provider name, linked to its `website` when CareWait lists one.
+* **Address / Distance**: Street address and `distanceMiles`, the straight-line distance from the center of the family's zip code, e.g. "0.5 mi (straight line)". It is not a driving or transit distance.
+* **Language**: The languages the provider lists (`languages`). Write "Not listed" when the list is empty; do not assume English or infer immersion from the program name.
+* **CCLD Record**: The Section 3 category for `ccldInspection.rating` (Clear, Minor findings, Notable citations, Caution, or Unknown), then each license number linked to its entry in `ccldFacilityUrls`.
+* **Cost**: Gross monthly tuition, the credit actually applied (`monthlySubsidyCreditAppliedToRate`), and the net estimate (`estimatedNetOutOfPocketMonthly`, or `estimatedNetOutOfPocketMonthlyMin`–`Max` for a published range). When `rateBasis` is `post_credit`, gross tuition is not published and the amount shown is already after the credit; never subtract the credit again. A Free Tuition $0 is conditional on an approved award and a funded slot. Write "Unpublished" rather than estimating a missing rate.
 
-If some candidates have unpublished rates, group them in a second table under **"Programs Requiring Tuition Verification"** so the parent gets a complete view of all neighborhood ELFA providers without losing rate accuracy.
+Use one table per list returned by `get_smart_recommendations`, skip empty ones, and show each provider once, in the first table that applies:
+1. **Recommended**: `recommendations` (within budget, with a verified rate and CCLD record).
+2. **Over budget**: `stretchOptions`.
+3. **Needs licensing verification**: `unverifiedSafetyCandidates`. Never move these into the tables above.
+4. **Programs Requiring Tuition Verification**: `unverifiedRateCandidates`.
+5. **Confirm classroom age**: `unverifiedAgeCandidates`.
+
+Say which area was searched: `searchScope.zipCodes` lists the zip codes, closest first. If `searchScope.citywide` is true, say that programs from across the city were added because fewer than 10 matched nearby or no zip code was given.
+
+When the child needs diaper changes (`childIsPottyTrained: false`, or unknown for a toddler), add one line below the tables naming the programs whose `diaperingFitStatus` is `confirmed`, and suggest asking the others about diaper changes on a tour. Missing diapering data never removes or demotes a program.
 
 ---
 
 ## 6. Web Enrichment for Candidate Tuition
 
-When CareWait records have blank, incomplete, or preschool-only tuition for candidate centers:
-1. Ground the initial candidate pool using CareWait and CCLD to confirm official licensing, location, and ELFA participation.
-2. For top neighborhood candidates that lack published toddler rates in CareWait, use web tools (`webfetch` or browser) to inspect their official `.org` / `.com` tuition or admissions pages.
-3. If current tuition for the child's age group is verified on the provider's official site:
-   * Apply the family's confirmed ELFA credit to calculate exact net out-of-pocket costs.
-   * Cite the provider's tuition URL and access date in the recommendations table.
-4. If rates remain unpublished or slot-dependent (e.g. Kai Ming's government-funded slots), clearly explain the regulated fee basis and provide the direct admissions contact.
+After `get_smart_recommendations` returns, fill tuition gaps for the closest rows in the tuition-verification table, including centers that publish only a preschool rate for a toddler:
+1. CareWait and CCLD stay the source for licensing, location, and ELFA participation; the provider's site only fills in tuition.
+2. Open the provider's `website` from its CareWait record with `webfetch` or a browser. If the record has no website, say so rather than guessing a URL. Do not take prices from search snippets or third-party directories (Section 1).
+3. When the page states a current price for the child's age group and schedule:
+   * Subtract the ELFA credit only if the provider's detail record lists the family's tier (`subsidyEligibilityStatus: "eligible"`) and the page does not say the price is already after the credit. Otherwise show the price with no credit and say why.
+   * Cite the page URL and access date in the Cost cell. If the row's `ageFitStatus` is `compatible`, move it to the Recommended or Over budget table by comparing the net price with the family's budget.
+4. When the page gives no current price for that age group and schedule, or fees depend on a funded slot (such as Head Start, CSPP, or CCTR), keep the row in the tuition-verification table with the provider's phone and email. Do not estimate.

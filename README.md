@@ -44,7 +44,7 @@ Queries the live SF CareWait database with rich filters:
 - `zipCodes`: List of San Francisco zip codes.
 
 ### 3. `get_childcare_details`
-Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
+Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info (phone, email, and the provider's `website`), and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
 All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit. The DEC documents behind the credit amounts are returned in `subsidySources`.

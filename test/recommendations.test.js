@@ -323,6 +323,13 @@ test('recommendations carry citations for follow-up questions', async (t) => {
       'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449'
     ]);
   });
+
+  await t.test('pass along the provider website for tuition checks', async () => {
+    const listed = await recommendForProvider({ website: 'https://fixture.example/tuition' });
+    assert.equal(listed.recommendations[0].website, 'https://fixture.example/tuition');
+    const unlisted = await recommendForProvider({});
+    assert.equal(unlisted.recommendations[0].website, '');
+  });
 });
 
 test('daycare type preference reaches the provider search', async (t) => {
