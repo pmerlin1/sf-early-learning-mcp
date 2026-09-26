@@ -47,12 +47,13 @@ export const FAMILY_INTAKE_QUESTIONS = [
     header: 'Potty training',
     question: 'Is your child independently potty trained?',
     parameter: 'childIsPottyTrained',
-    agentNote: 'Never infer this from age. When it is unknown, omit the parameter; a toddler is ' +
-      'then held to documented diaper-change support.',
+    agentNote: 'Never infer this from age. When it is unknown, omit the parameter. Diaper-change ' +
+      'support does not filter results: CareWait rarely records it, so each program reports it ' +
+      'as something to confirm on a tour.',
     options: [
       { label: 'Not potty trained', description: 'Still needs diaper changes', value: false },
       { label: 'Independently potty trained', description: 'Uses the toilet without help', value: true },
-      { label: 'In progress or not sure', description: 'We will look for diaper-change support', value: null }
+      { label: 'In progress or not sure', description: 'We will note diaper changes as a tour question', value: null }
     ]
   },
   {

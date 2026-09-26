@@ -44,10 +44,12 @@ Queries the live SF CareWait database with rich filters:
 - `zipCodes`: List of San Francisco zip codes.
 
 ### 3. `get_childcare_details`
-Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info, and DEC contract notes.
+Fetches complete provider details by `entityId`: licensed classrooms, age limits in months, full infant/toddler/preschool tuition rate schedules, contact info (phone, email, and the provider's `website`), and DEC contract notes.
 
 ### 4. `get_smart_recommendations`
 All-in-one recommendation engine: takes budget, language, schedule, benefit tier, daycare type (`licensedCenter`, `licensedFamilyChildCare`, or `any`; centers when omitted), and optional potty-training status; verifies the selected ELFA tier against provider details before applying a credit; and returns an affordably ranked shortlist of licensed programs. Missing provider aid data never becomes an assumed credit. The DEC documents behind the credit amounts are returned in `subsidySources`.
+
+With a home zip code, the search works outward in rings (about 1.2, 2.5, and 3.8 miles, straight line), fetching every page of each ring until 50 providers are queued for detail and CCLD checks, so the closest programs are always evaluated first. It widens to all of San Francisco only when fewer than 10 programs match nearby, and adds those after the nearby ones. `searchScope` reports the zip codes searched and whether the search went citywide.
 
 ### 5. `compare_heuristic_vs_jev`
 Compares the local rule-based budget heuristic with TypeSafe Jev System One. Requires `TYPESAFE_API_KEY` and returns an error if the live Jev evaluation cannot run; no simulated Jev fallback is provided.
@@ -77,12 +79,12 @@ Hard factual checks stay in application code. Jev supplies model judgments for t
    - Current CCLD license status and complete inspection data. Missing or incomplete records are unknown, not clean. Providers with several licenses (e.g. separate infant and preschool licenses) are checked on every license, and the most severe finding is reported.
    - Facility type matching (dedicated commercial center vs in-home).
    - Exact classroom age compatibility in months. Missing age data is surfaced for review.
-   - Published rate, provider-confirmed ELFA tier, and required toddler diaper-change evidence before placement in verified recommendations. Potty-training support is tracked separately from diaper changes. A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
+   - Published rate and provider-confirmed ELFA tier before placement in verified recommendations. Diapering accommodation is reported per provider (`diaperingFitStatus`) as a question for parents to confirm on tours, but is excluded from code-enforced gating and Jev composite scoring because CareWait provider records rarely populate the field (<2%). A missing aid list or rate note that conflicts with the provider's tier list is routed for verification.
    - Per-provider `monthlySubsidyCredit` is the credit listed for that provider and tier; `monthlySubsidyCreditAppliedToRate` is the amount actually subtracted. Already post-credit rates show zero subtracted to prevent double-discounting. `scheduledMonthlySubsidyCredit` is the DEC schedule reference when provider acceptance is not confirmed.
 
 2. **Graded Decision Scoring (TypeSafe Jev Primitives)**:
-   - With a location: **Location 25%, Safety 25%, Budget 25%, Immersion 15%, Diapering 10%**.
-   - Without a location: **Safety 35%, Budget 30%, Immersion 25%, Diapering 10%**.
+   - With a location: **Location 30%, Safety 30%, Budget 25%, Immersion 15%** (diapering excluded).
+   - Without a location: **Safety 40%, Budget 35%, Immersion 25%** (diapering excluded).
 
 3. Jev returns a typed recommendation choice and probabilities. The application also computes a weighted composite from Jev's available score answers; if answers are missing, the composite is reweighted over scored dimensions and includes a coverage value and missing-dimension list. The choice is a separate model judgment, not a verdict derived mechanically from that composite.
 

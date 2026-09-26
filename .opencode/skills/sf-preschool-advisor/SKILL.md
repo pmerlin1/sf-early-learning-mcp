@@ -63,7 +63,7 @@ Ask in two rounds. The `sf-early-learning` MCP prompt `family_intake_interview` 
 **Round 1: a single `Question()` call containing every first-round question the family has not already answered.** Potty training and daycare type are the easiest to skip; never leave them for later. Do not search CareWait or call `get_smart_recommendations` until all six are answered.
 
 1. **Child's exact age**: Years and months. This determines the Infant, Toddler, or Preschooler rate, and classroom fit is checked in months. If the family picks an age band, ask for the months.
-2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. For a child who needs diaper changes, require explicit provider diapering evidence for the verified list. Treat `pottyTrainingProvided` as a separate positive signal about toilet-learning support, not proof of diaper changes. Do not infer diapering policy or on-site changing tables from a toddler license; ask the provider when the record is unclear. Pass `childIsPottyTrained: false` or `true`; omit it when the answer is unknown.
+2. **Potty training & diapering status**: Ask whether the child is independently potty trained; never infer it from age. Diapering accommodation is tracked as an informational checklist item for parent tours; it does **not** gate preschool options or eliminate verified facilities, because CareWait provider records rarely populate the diapering flag (<2% of listings). Pass `childIsPottyTrained: false` or `true`; omit it when the answer is unknown.
 3. **Family size**: Parents or caregivers plus dependent children under 18.
 4. **Neighborhood / zip**: Pass a 5-digit San Francisco zip code as `homeZipCode`.
 5. **Schedule**: Full-time vs. part-time. This filters programs; it does not change the ELFA credit (see "Part-time care gets the same credit" above).
@@ -94,7 +94,7 @@ Providers can hold more than one CCLD license (for example, separate infant and 
 
 ## 4. Decision Model & Meta Composite Scoring (TypeSafe Jev)
 
-Use code-enforced gates for current license status, exact classroom age fit, verified price, provider-confirmed subsidy tier, and required diaper-change support. A child explicitly marked potty trained does not need the diapering gate. The gate applies when the family says the child is not potty trained (toddler or preschool age) and when a toddler's status is unknown. An unknown status for a preschool-age child is not gated, so always ask rather than infer it from age. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
+Use code-enforced gates for current license status, exact classroom age fit, verified price, and provider-confirmed subsidy tier. Diapering accommodation is tracked informationally for parents rather than gating results, because <2% of provider records populate the accommodation flag. Missing or incomplete CCLD data is unknown, never a clean record; show it as needing verification and do not place that facility in the verified recommendations.
 
 Use `get_smart_recommendations` to calculate net cost from a published rate and the applicable credit. A Free Tuition estimate of $0 is conditional on confirmed ELFA eligibility and an available funded enrollment slot. Do not claim that Jev eliminates factual uncertainty: its typed scores and choice probabilities are model judgments, not substitutes for official records.
 
@@ -102,6 +102,44 @@ Use `compare_heuristic_vs_jev` for the rule-based budget heuristic versus a live
 
 CareWait's 100/25 evidence values are ordinal evidence signals, not probabilities: 100 means the matching accommodation is explicitly listed; 25 means the listing does not confirm it. Diaper changes and potty-training support have separate signals. A 100 for potty-training support must not be shown as 100 for diaper changes. Jev receives those source facts; a missing Jev score is not a zero and its composite must show the coverage used.
 
-**Composite scoring weights**:
-* With a family location: Location **25%**, Safety **25%**, Budget **25%**, Immersion **15%**, Diapering **10%**.
-* Without a family location: Safety **35%**, Budget **30%**, Immersion **25%**, Diapering **10%**.
+**Composite scoring weights (Diapering excluded from composite)**:
+* With a family location: Location **30%**, Safety **30%**, Budget **25%**, Immersion **15%**.
+* Without a family location: Safety **40%**, Budget **35%**, Immersion **25%**.
+
+---
+
+## 5. Mandatory Response Presentation: Recommendation Tables
+
+Whenever presenting preschool or child care options to a family, **always present them in Markdown tables** with these columns:
+
+| Name | Address / Distance | Language | CCLD Record | Cost |
+| :--- | :--- | :--- | :--- | :--- |
+
+* **Name**: The provider name, linked to its `website` when CareWait lists one.
+* **Address / Distance**: Street address and `distanceMiles`, the straight-line distance from the center of the family's zip code, e.g. "0.5 mi (straight line)". It is not a driving or transit distance.
+* **Language**: The languages the provider lists (`languages`). Write "Not listed" when the list is empty; do not assume English or infer immersion from the program name.
+* **CCLD Record**: The Section 3 category for `ccldInspection.rating` (Clear, Minor findings, Notable citations, Caution, or Unknown), then each license number linked to its entry in `ccldFacilityUrls`.
+* **Cost**: Gross monthly tuition, the credit actually applied (`monthlySubsidyCreditAppliedToRate`), and the net estimate (`estimatedNetOutOfPocketMonthly`, or `estimatedNetOutOfPocketMonthlyMin`–`Max` for a published range). When `rateBasis` is `post_credit`, gross tuition is not published and the amount shown is already after the credit; never subtract the credit again. A Free Tuition $0 is conditional on an approved award and a funded slot. Write "Unpublished" rather than estimating a missing rate.
+
+Use one table per list returned by `get_smart_recommendations`, skip empty ones, and show each provider once, in the first table that applies:
+1. **Recommended**: `recommendations` (within budget, with a verified rate and CCLD record).
+2. **Over budget**: `stretchOptions`.
+3. **Needs licensing verification**: `unverifiedSafetyCandidates`. Never move these into the tables above.
+4. **Programs Requiring Tuition Verification**: `unverifiedRateCandidates`.
+5. **Confirm classroom age**: `unverifiedAgeCandidates`.
+
+Say which area was searched: `searchScope.zipCodes` lists the zip codes, closest first. If `searchScope.citywide` is true, say that programs from across the city were added because fewer than 10 matched nearby or no zip code was given.
+
+When the child needs diaper changes (`childIsPottyTrained: false`, or unknown for a toddler), add one line below the tables naming the programs whose `diaperingFitStatus` is `confirmed`, and suggest asking the others about diaper changes on a tour. Missing diapering data never removes or demotes a program.
+
+---
+
+## 6. Web Enrichment for Candidate Tuition
+
+After `get_smart_recommendations` returns, fill tuition gaps for the closest rows in the tuition-verification table, including centers that publish only a preschool rate for a toddler:
+1. CareWait and CCLD stay the source for licensing, location, and ELFA participation; the provider's site only fills in tuition.
+2. Open the provider's `website` from its CareWait record with `webfetch` or a browser. If the record has no website, say so rather than guessing a URL. Do not take prices from search snippets or third-party directories (Section 1).
+3. When the page states a current price for the child's age group and schedule:
+   * Subtract the ELFA credit only if the provider's detail record lists the family's tier (`subsidyEligibilityStatus: "eligible"`) and the page does not say the price is already after the credit. Otherwise show the price with no credit and say why.
+   * Cite the page URL and access date in the Cost cell. If the row's `ageFitStatus` is `compatible`, move it to the Recommended or Over budget table by comparing the net price with the family's budget.
+4. When the page gives no current price for that age group and schedule, or fees depend on a funded slot (such as Head Start, CSPP, or CCTR), keep the row in the tuition-verification table with the provider's phone and email. Do not estimate.

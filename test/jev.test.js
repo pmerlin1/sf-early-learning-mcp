@@ -152,15 +152,15 @@ test('Jev does not turn missing scores into zero-valued composite penalties', as
     );
 
     assert.equal(results[0].compositeScore, 1);
-    assert.equal(results[0].compositeCoverage, 0.65);
-    assert.deepEqual(results[0].missingScoreCriteria, ['immersion', 'diapering']);
+    assert.equal(results[0].compositeCoverage, 0.75);
+    assert.deepEqual(results[0].missingScoreCriteria, ['immersion']);
   } finally {
     if (original === undefined) delete process.env.TYPESAFE_API_KEY;
     else process.env.TYPESAFE_API_KEY = original;
   }
 });
 
-test('Jev excludes diapering from composite when the family says it is not needed', async () => {
+test('Jev skips the diapering question when the family says it is not needed', async () => {
   const original = process.env.TYPESAFE_API_KEY;
   process.env.TYPESAFE_API_KEY = 'fixture-key';
   try {

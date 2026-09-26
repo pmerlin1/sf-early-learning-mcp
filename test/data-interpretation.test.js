@@ -235,6 +235,7 @@ test('provider subsidy eligibility and care evidence stay explicit', async (t) =
             programName: 'Fixture Center',
             financialAid: ['halfCreditELFA'],
             accommodations: ['pottyTrainingProvided'],
+            website: 'https://fixture.example/tuition',
             program: [],
             rates: {}
           }
@@ -252,6 +253,7 @@ test('provider subsidy eligibility and care evidence stay explicit', async (t) =
       assert.equal(site.diaperingEvidenceScore, 25);
       assert.equal(site.pottyTrainingStatus, 'confirmed');
       assert.equal(site.pottyTrainingEvidenceScore, 100);
+      assert.equal(site.website, 'https://fixture.example/tuition');
     } finally {
       globalThis.fetch = originalFetch;
     }

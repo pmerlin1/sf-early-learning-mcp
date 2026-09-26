@@ -200,7 +200,7 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.doesNotMatch(option.costEstimateBasis, /selected ELFA tier/);
   });
 
-  await t.test('requires diaper evidence only when the child needs diaper changes', async () => {
+  await t.test('tracks diaper evidence informationally without gating recommendations', async () => {
     const site = {
       diaperingStatus: 'unknown',
       diaperingAccommodated: false,
@@ -209,17 +209,19 @@ test('recommendation output quarantines unverified facts', async (t) => {
       pottyTrainingEvidenceSource: 'CareWait: pottyTrainingProvided'
     };
     const needsDiapers = await recommendForProvider(site);
-    assert.equal(needsDiapers.recommendations.length, 0);
-    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].diaperingFitStatus,
+    assert.equal(needsDiapers.recommendations.length, 1);
+    assert.equal(needsDiapers.recommendations[0].diaperingFitStatus,
       'potty_training_only_diapering_unconfirmed');
-    assert.equal(needsDiapers.unverifiedDiaperingCandidates[0].pottyTrainingStatus, 'confirmed');
+    assert.equal(needsDiapers.recommendations[0].pottyTrainingStatus, 'confirmed');
+    assert.equal('unverifiedDiaperingCandidates' in needsDiapers, false,
+      'no list suggests these programs were excluded');
 
     const toiletTrained = await recommendForProvider(site, { childIsPottyTrained: true });
     assert.equal(toiletTrained.recommendations.length, 1);
     assert.equal(toiletTrained.recommendations[0].diaperingFitStatus, 'not_required');
   });
 
-  await t.test('requires diaper evidence for a preschool-age child who is not potty trained', async () => {
+  await t.test('reports diapering status for a preschool-age child who is not potty trained', async () => {
     const preschoolSite = {
       programsOffered: [{ name: 'Preschool', minAgeMonths: 36, maxAgeMonths: 60 }],
       monthlyRates: { preschool: { min: 1383, max: 1383 } },
@@ -233,9 +235,9 @@ test('recommendation output quarantines unverified facts', async (t) => {
       childIsPottyTrained: false
     });
     assert.equal(notTrained.ageCategory, 'preschool');
-    assert.equal(notTrained.recommendations.length, 0);
-    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingFitStatus, 'unknown');
-    assert.equal(notTrained.unverifiedDiaperingCandidates[0].diaperingEvidenceScore, 25);
+    assert.equal(notTrained.recommendations.length, 1);
+    assert.equal(notTrained.recommendations[0].diaperingFitStatus, 'unknown');
+    assert.equal(notTrained.recommendations[0].diaperingEvidenceScore, 25);
 
     const trained = await recommendForProvider(preschoolSite, {
       ...preschooler,
@@ -321,6 +323,13 @@ test('recommendations carry citations for follow-up questions', async (t) => {
       'https://www.ccld.dss.ca.gov/carefacilitysearch/FacDetail/384004449'
     ]);
   });
+
+  await t.test('pass along the provider website for tuition checks', async () => {
+    const listed = await recommendForProvider({ website: 'https://fixture.example/tuition' });
+    assert.equal(listed.recommendations[0].website, 'https://fixture.example/tuition');
+    const unlisted = await recommendForProvider({});
+    assert.equal(unlisted.recommendations[0].website, '');
+  });
 });
 
 test('daycare type preference reaches the provider search', async (t) => {
@@ -355,5 +364,87 @@ test('daycare type preference reaches the provider search', async (t) => {
     const { result, searchFilter } = await run({});
     assert.equal(searchFilter.programType, 'licensedCenter');
     assert.equal(result.programTypePreference, 'licensedCenter');
+  });
+});
+
+// Stands in for CareWait search: filters by zip, pages with skip/take, and returns matches in
+// index order rather than by distance, as CareWait's fixed pseudo-random order does.
+function fakeCareWait(zipCounts) {
+  const index = zipCounts.flatMap(([zip, count]) => Array.from({ length: count }, (_, i) => ({
+    entityId: zip + '-' + i,
+    zipCode: String(zip)
+  })));
+  const calls = [];
+  const search = async (filter) => {
+    calls.push(filter);
+    const matches = filter.zipCodes
+      ? index.filter((item) => filter.zipCodes.includes(Number(item.zipCode)))
+      : index;
+    const skip = filter.skip ?? 0;
+    const take = filter.take ?? 50;
+    return { total: matches.length, items: matches.slice(skip, skip + take) };
+  };
+  return { search, calls };
+}
+
+async function providerBatchFor(zipCounts, params = {}) {
+  const { search, calls } = fakeCareWait(zipCounts);
+  const requested = [];
+  const result = await getRecommendations(
+    { childAgeYears: 2.1, targetBudgetMonthly: 5000, ...params },
+    {
+      search,
+      getDetails: async (entityId) => {
+        requested.push(entityId);
+        return null;
+      }
+    }
+  );
+  return { result, calls, requested };
+}
+
+const zipOf = (entityId) => Number(entityId.split('-')[0]);
+
+test('neighborhood search evaluates the closest programs', async (t) => {
+  await t.test('keeps every home-zip program when the neighborhood exceeds one page', async () => {
+    // Farther zips come first in CareWait's order, so a single page would miss the home zip.
+    const { result, calls, requested } = await providerBatchFor(
+      [[94102, 30], [94109, 30], [94116, 30], [94121, 21]],
+      { homeZipCode: 94121 }
+    );
+    assert.deepEqual(calls[0].zipCodes, [94121]);
+    assert.equal(requested.length, 50);
+    assert.ok(requested.slice(0, 21).every((id) => zipOf(id) === 94121));
+    assert.equal(requested.filter((id) => zipOf(id) === 94116).length, 29);
+    assert.ok(!requested.some((id) => zipOf(id) === 94102 || zipOf(id) === 94109));
+    assert.equal(result.searchScope.zipCodes[0], 94121);
+    assert.ok(!result.searchScope.zipCodes.includes(94102), 'stops widening once the batch is full');
+    assert.equal(result.searchScope.citywide, false);
+  });
+
+  await t.test('pages through a ring holding more than one page of programs', async () => {
+    const { calls, requested } = await providerBatchFor([[94121, 75]], { homeZipCode: 94121 });
+    assert.deepEqual(calls.map((call) => call.skip), [0, 50]);
+    assert.equal(requested.length, 50);
+    assert.equal(new Set(requested).size, 50);
+  });
+
+  await t.test('adds citywide programs after nearby ones instead of replacing them', async () => {
+    const { result, requested } = await providerBatchFor(
+      [[94124, 60], [94121, 3]],
+      { homeZipCode: 94121 }
+    );
+    assert.deepEqual(requested.slice(0, 3), ['94121-0', '94121-1', '94121-2']);
+    assert.equal(requested.length, 50);
+    assert.equal(new Set(requested).size, requested.length);
+    assert.equal(result.searchScope.citywide, true);
+  });
+
+  await t.test('searches citywide once when no location is given', async () => {
+    const { result, calls, requested } = await providerBatchFor([[94121, 5]]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].zipCodes, undefined);
+    assert.equal(requested.length, 5);
+    assert.deepEqual(result.searchScope, { zipCodes: [], citywide: true });
   });
 });

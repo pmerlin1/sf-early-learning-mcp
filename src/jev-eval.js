@@ -211,22 +211,16 @@ export async function evaluateCandidatesWithJev(
       const immersion = scoreSummary(answers.immersionFit);
       const diapering = scoreSummary(answers.toddlerDiaperingFit);
 
-      const allWeights = hasUserLoc
-        ? { location: 0.25, safety: 0.25, budget: 0.25, immersion: 0.15, diapering: 0.10 }
-        : { safety: 0.35, budget: 0.30, immersion: 0.25, diapering: 0.10 };
-      const applicableWeights = Object.entries(allWeights).filter(([criterion]) =>
-        !(criterion === 'diapering' && candidate.diaperingFitStatus === 'not_required')
-      );
-      const applicableWeightTotal = applicableWeights.reduce((total, [, weight]) => total + weight, 0);
-      const weights = Object.fromEntries(applicableWeights.map(([criterion, weight]) =>
-        [criterion, weight / applicableWeightTotal]
-      ));
+      // Diapering is excluded from composite scoring because diaper-change accommodations
+      // are rarely populated in CareWait records (<2%), avoiding unfair penalties.
+      const weights = hasUserLoc
+        ? { location: 0.30, safety: 0.30, budget: 0.25, immersion: 0.15 }
+        : { safety: 0.40, budget: 0.35, immersion: 0.25 };
       const normalized = {
         location: !location || location.score === null ? null : location.score / 3,
         safety: !safety || safety.score === null ? null : safety.score / 3,
         budget: !budget || budget.score === null ? null : budget.score / 3,
-        immersion: !immersion || immersion.score === null ? null : immersion.score / 3,
-        diapering: !diapering || diapering.score === null ? null : diapering.score / 3
+        immersion: !immersion || immersion.score === null ? null : immersion.score / 3
       };
       const scoredWeights = Object.entries(weights).filter(([criterion]) =>
         normalized[criterion] !== null
