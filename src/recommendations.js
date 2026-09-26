@@ -344,8 +344,7 @@ export async function getRecommendations(
           proximityLevel: proximity.proximityLevel,
           isImmediateNeighborhood: proximity.isImmediateNeighborhood,
           _hasCompleteRate: hasCompleteRate,
-          _ccldVerified: ccldVerified,
-          _diaperingVerified: diaperingFitStatus === 'confirmed' || diaperingFitStatus === 'not_required'
+          _ccldVerified: ccldVerified
         };
       } catch (error) {
         lookupWarnings.push({
@@ -390,14 +389,9 @@ export async function getRecommendations(
     .filter((candidate) => candidate.ageFitStatus === 'unknown')
     .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
 
-  const unverifiedDiapering = detailedCandidates
-    .filter((candidate) => !candidate._diaperingVerified)
-    .sort((a, b) => (a.distanceMiles ?? 99) - (b.distanceMiles ?? 99));
-
   const publicCandidates = (candidates) => candidates.map(({
     _hasCompleteRate,
     _ccldVerified,
-    _diaperingVerified,
     ...candidate
   }) => candidate);
 
@@ -426,7 +420,6 @@ export async function getRecommendations(
     unverifiedRateCandidates: publicCandidates(unverifiedRates.slice(0, 15)),
     unverifiedSafetyCandidates: publicCandidates(unverifiedSafety.slice(0, 10)),
     unverifiedAgeCandidates: publicCandidates(unverifiedAge.slice(0, 10)),
-    unverifiedDiaperingCandidates: publicCandidates(unverifiedDiapering.slice(0, 10)),
     lookupWarnings
   };
 }

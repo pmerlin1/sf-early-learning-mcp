@@ -213,6 +213,8 @@ test('recommendation output quarantines unverified facts', async (t) => {
     assert.equal(needsDiapers.recommendations[0].diaperingFitStatus,
       'potty_training_only_diapering_unconfirmed');
     assert.equal(needsDiapers.recommendations[0].pottyTrainingStatus, 'confirmed');
+    assert.equal('unverifiedDiaperingCandidates' in needsDiapers, false,
+      'no list suggests these programs were excluded');
 
     const toiletTrained = await recommendForProvider(site, { childIsPottyTrained: true });
     assert.equal(toiletTrained.recommendations.length, 1);

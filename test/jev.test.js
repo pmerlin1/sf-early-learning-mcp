@@ -160,7 +160,7 @@ test('Jev does not turn missing scores into zero-valued composite penalties', as
   }
 });
 
-test('Jev excludes diapering from composite when the family says it is not needed', async () => {
+test('Jev skips the diapering question when the family says it is not needed', async () => {
   const original = process.env.TYPESAFE_API_KEY;
   process.env.TYPESAFE_API_KEY = 'fixture-key';
   try {
