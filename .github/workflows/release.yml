@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$PACKAGE_VERSION" || {
+            echo "Tag $RELEASE_TAG does not match package version v$PACKAGE_VERSION" >&2
+            exit 1
+          }
+      - run: npm ci
+      - run: npm test
+      - id: pack
+        name: Package release
+        run: echo "package=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PACKAGE_FILE: ${{ steps.pack.outputs.package }}
+        run: gh release create "$RELEASE_TAG" "$PACKAGE_FILE" --generate-notes
