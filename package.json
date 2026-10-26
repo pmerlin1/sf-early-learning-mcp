@@ -30,6 +30,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "@typesafe-ai/sdk": "^0.6.0"
+    "@typesafe-ai/sdk": "^0.7.0"
   }
 }
